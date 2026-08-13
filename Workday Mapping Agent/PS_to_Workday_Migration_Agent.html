@@ -1,0 +1,1513 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PeopleSoft → Workday Migration Agent</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{
+  --primary:#1F3864;--primary-light:#2E75B6;--primary-pale:#E6F1FB;
+  --accent:#107C41;--accent-pale:#E8F5E9;
+  --warn:#9C5700;--warn-pale:#FFF3CD;
+  --danger:#C00000;--danger-pale:#FDECEA;
+  --gold:#B8860B;--gold-pale:#FDF6E3;--gold-border:#F0D060;
+  --surface:#FFFFFF;--surface-1:#F8FAFC;--surface-2:#F1F5F9;
+  --border:#E2E8F0;--border-strong:#CBD5E1;
+  --text:#1E293B;--text-2:#475569;--text-3:#94A3B8;
+  --radius:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;color:var(--text);background:#EEF2F7;min-height:100vh}
+
+/* Header */
+header{background:linear-gradient(135deg,#1F3864 0%,#2E75B6 100%);padding:0 28px;height:64px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,.25)}
+.logo{display:flex;align-items:center;gap:12px;color:#fff}
+.logo-icon{width:38px;height:38px;background:rgba(255,255,255,.15);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:20px}
+.logo-text .logo-title{font-size:16px;font-weight:700;letter-spacing:.2px}
+.logo-text .logo-sub{font-size:10px;color:rgba(255,255,255,.6);letter-spacing:.5px;text-transform:uppercase;margin-top:1px}
+.hdr-right{display:flex;align-items:center;gap:10px}
+.hdr-badge{background:rgba(255,255,255,.15);color:#fff;font-size:11px;padding:4px 12px;border-radius:20px;border:1px solid rgba(255,255,255,.25);font-weight:500}
+.hdr-step{font-size:12px;color:rgba(255,255,255,.65)}
+
+/* Layout */
+.app{display:grid;grid-template-columns:260px 1fr;min-height:calc(100vh - 64px)}
+
+/* Sidebar */
+aside{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:18px 0}
+.nav-step{display:flex;align-items:center;gap:10px;padding:11px 18px;cursor:pointer;color:var(--text-2);font-size:13px;border-left:3px solid transparent;transition:all .15s}
+.nav-step:hover{background:var(--surface-2)}
+.nav-step.active{background:var(--primary-pale);color:var(--primary);border-left-color:var(--primary);font-weight:500}
+.nav-step.done .sn{background:var(--accent);color:#fff;border-color:var(--accent)}
+.nav-step.locked{opacity:.38;cursor:not-allowed;pointer-events:none}
+.sn{width:22px;height:22px;border-radius:50%;background:var(--surface-2);border:1.5px solid var(--border-strong);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0;color:var(--text-3)}
+.nav-step.active .sn{background:var(--primary);color:#fff;border-color:var(--primary)}
+.nav-divider{height:1px;background:var(--border);margin:12px 18px}
+.nav-ka-label{background:var(--gold-pale);border:1px solid var(--gold-border);border-radius:7px;padding:9px 13px;margin:10px 16px;font-size:11px;color:var(--gold);font-weight:600;line-height:1.6}
+.nav-info{padding:14px 18px;font-size:11px;color:var(--text-3);line-height:1.9;margin-top:auto}
+.nav-info b{color:var(--text-2)}
+
+/* Main */
+main{padding:24px 28px;overflow-y:auto;max-height:calc(100vh - 64px)}
+.page{display:none}.page.active{display:block}
+.page-title{font-size:20px;font-weight:700;color:var(--primary);margin-bottom:4px;display:flex;align-items:center;gap:10px}
+.page-sub{font-size:13px;color:var(--text-2);margin-bottom:20px}
+
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 1px 4px rgba(0,0,0,.06);margin-bottom:16px}
+.card-header{padding:13px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.card-title{font-size:13px;font-weight:600;color:var(--primary);display:flex;align-items:center;gap:8px}
+.card-body{padding:18px}
+
+/* Knowledge Article Card */
+.ka-card{background:var(--surface);border:1.5px solid var(--gold-border);border-radius:var(--radius);box-shadow:0 2px 8px rgba(184,134,11,.12);margin-bottom:16px;position:relative;overflow:hidden}
+.ka-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#B8860B,#F0C040,#B8860B)}
+.ka-header{padding:13px 18px;border-bottom:1px solid var(--gold-border);display:flex;align-items:center;justify-content:space-between;background:var(--gold-pale)}
+.ka-title{font-size:13px;font-weight:700;color:var(--gold);display:flex;align-items:center;gap:8px}
+.ka-badge{background:var(--gold);color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;font-weight:600;letter-spacing:.3px}
+.ka-body{padding:18px}
+
+/* Upload zones */
+.dz{border:2px dashed var(--border-strong);border-radius:var(--radius);padding:22px 16px;text-align:center;cursor:pointer;transition:all .2s;background:var(--surface-1);position:relative;min-height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.dz:hover,.dz.drag{border-color:var(--primary-light);background:var(--primary-pale)}
+.dz.loaded{border-style:solid;border-color:var(--accent);background:var(--accent-pale)}
+.dz.ka-zone{border-color:var(--gold-border);background:var(--gold-pale)}
+.dz.ka-zone:hover{border-color:var(--gold);background:#FEF3C7}
+.dz.ka-zone.loaded{border-color:var(--accent);background:var(--accent-pale)}
+.dz input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.dz-icon{font-size:26px;margin-bottom:6px}
+.dz-title{font-weight:600;font-size:12px;color:var(--text);margin-bottom:3px}
+.dz-sub{font-size:11px;color:var(--text-3)}
+.dz-fi{font-size:11px;color:var(--accent);margin-top:6px;font-weight:500;word-break:break-all;padding:0 4px}
+.section-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-3);margin-bottom:7px}
+.ka-section-lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--gold);margin-bottom:7px;display:flex;align-items:center;gap:5px}
+
+/* Buttons */
+.btn{padding:8px 16px;border-radius:7px;font-size:13px;font-weight:500;cursor:pointer;border:1.5px solid transparent;transition:all .15s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn-primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.btn-primary:hover{background:var(--primary-light)}
+.btn-primary:disabled{opacity:.4;cursor:not-allowed}
+.btn-success{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-success:hover{background:#0d6635}
+.btn-outline{background:transparent;color:var(--primary);border-color:var(--primary)}
+.btn-outline:hover{background:var(--primary-pale)}
+.btn-ghost{background:transparent;color:var(--text-2);border-color:var(--border-strong)}
+.btn-ghost:hover{background:var(--surface-2)}
+.btn-sm{padding:5px 12px;font-size:12px}
+.btn-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+
+/* Tables */
+.tbl-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead tr{background:var(--primary)}
+thead th{color:#fff;padding:8px 12px;text-align:left;font-weight:500;font-size:11px;white-space:nowrap}
+tbody tr:nth-child(even){background:var(--primary-pale)}
+tbody tr:nth-child(odd){background:var(--surface)}
+tbody tr:hover{background:#dbeafe55}
+td{padding:6px 12px;border-bottom:1px solid var(--border);color:var(--text);white-space:nowrap;max-width:260px;overflow:hidden;text-overflow:ellipsis}
+.mono{font-family:'Consolas','Menlo',monospace;font-size:11px}
+
+/* Tabs */
+.tab-bar{display:flex;gap:2px;border-bottom:2px solid var(--border);margin-bottom:14px;flex-wrap:wrap}
+.tab-btn{padding:7px 14px;font-size:12px;font-weight:500;cursor:pointer;border:none;background:none;color:var(--text-2);border-bottom:2px solid transparent;margin-bottom:-2px;border-radius:4px 4px 0 0;white-space:nowrap;transition:all .15s}
+.tab-btn:hover{background:var(--surface-2)}
+.tab-btn.active{color:var(--primary);border-bottom-color:var(--primary);background:var(--primary-pale)}
+.tab-pane{display:none}.tab-pane.active{display:block}
+
+/* Badges */
+.pass{background:#C6EFCE;color:#276221;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.fail{background:var(--danger-pale);color:var(--danger);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.warn-b{background:var(--warn-pale);color:var(--warn);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.b-direct{background:#E6F1FB;color:#185FA5;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:500}
+.b-derived{background:#FAEEDA;color:#BA7517;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:500}
+.b-default{background:#F0F0F0;color:#555;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:500}
+.conf-high{color:#185FA5;font-weight:600}
+.conf-medium{color:#BA7517;font-weight:600}
+.conf-low{color:var(--danger);font-weight:600}
+.req-required{background:var(--danger-pale);color:var(--danger);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.req-optional{background:var(--accent-pale);color:var(--accent);padding:2px 8px;border-radius:4px;font-size:11px}
+
+/* Stats */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.stat-n{font-size:26px;font-weight:700;color:var(--primary)}
+.stat-l{font-size:12px;color:var(--text-2);margin-top:3px}
+.stat.green .stat-n{color:var(--accent)}
+.stat.amber .stat-n{color:var(--warn)}
+.stat.red .stat-n{color:var(--danger)}
+
+/* Alerts */
+.alert{padding:11px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;display:flex;align-items:flex-start;gap:10px;line-height:1.5}
+.alert-info{background:var(--primary-pale);color:var(--primary);border:1px solid #B5D4F4}
+.alert-success{background:var(--accent-pale);color:#276221;border:1px solid #A5D6A7}
+.alert-warn{background:var(--warn-pale);color:var(--warn);border:1px solid #FFD591}
+.alert-danger{background:var(--danger-pale);color:var(--danger);border:1px solid #FFCDD2}
+.alert-ka{background:var(--gold-pale);color:var(--gold);border:1px solid var(--gold-border)}
+
+/* Upload pills */
+.upload-pills{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap}
+.pill{font-size:12px;padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:var(--surface-1);color:var(--text-3)}
+.pill.ready{background:#E8F5E9;color:var(--accent);border-color:#A5D6A7;font-weight:500}
+.pill.ka{background:var(--gold-pale);border-color:var(--gold-border);color:var(--gold)}
+.pill.ka.ready{background:#E8F5E9;color:var(--accent);border-color:#A5D6A7}
+
+/* Scroll pane */
+.scroll-pane{max-height:400px;overflow-y:auto}
+
+/* Loader */
+.loader{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:300;align-items:center;justify-content:center;flex-direction:column;gap:14px;backdrop-filter:blur(3px)}
+.loader.show{display:flex}
+.spinner{width:44px;height:44px;border:4px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loader-msg{color:#fff;font-size:14px;font-weight:600}
+.loader-sub{color:rgba(255,255,255,.6);font-size:12px}
+
+/* Load sequence */
+.load-seq{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.seq-item{text-align:center;padding:14px 8px;background:var(--surface-1);border-radius:8px;border:1px solid var(--border)}
+.seq-num{font-size:22px;font-weight:700;color:var(--primary)}
+.seq-name{font-size:12px;font-weight:600;margin:4px 0}
+.seq-desc{font-size:11px;color:var(--text-2)}
+
+/* Hero */
+.hero{text-align:center;padding:28px 20px 18px}
+.hero h1{font-size:22px;font-weight:700;color:var(--primary);margin-bottom:6px}
+.hero p{font-size:13px;color:var(--text-2);max-width:600px;margin:0 auto 22px;line-height:1.7}
+.feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-width:700px;margin:0 auto 20px}
+.feat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;text-align:left}
+.feat-icon{font-size:20px;margin-bottom:6px}
+.feat h3{font-size:12px;font-weight:600;margin-bottom:3px}
+.feat p{font-size:11px;color:var(--text-2);line-height:1.5}
+
+/* Checklist */
+.checklist-item{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.checklist-item:last-child{border:none}
+
+/* KA viewer */
+.ka-sheet-select{padding:6px 10px;border-radius:6px;border:1px solid var(--border-strong);font-size:12px;color:var(--text);background:var(--surface);margin-bottom:12px;cursor:pointer}
+.ka-sheet-select:focus{outline:none;border-color:var(--primary)}
+
+/* Rule reference grid */
+.rule-grid{display:grid;grid-template-columns:auto 1fr 1fr;gap:0;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:12px}
+.rg-hdr{background:var(--primary);color:#fff;padding:7px 12px;font-weight:600;font-size:11px}
+.rg-cell{padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text-2)}
+.rg-cell:nth-child(6n+1),.rg-cell:nth-child(6n+2),.rg-cell:nth-child(6n+3){background:var(--surface)}
+.rg-cell:nth-child(6n+4),.rg-cell:nth-child(6n+5),.rg-cell:nth-child(6n+6){background:var(--primary-pale)}
+.rule-id{font-weight:700;color:var(--primary);font-family:monospace}
+</style>
+</head>
+<body>
+
+<div class="loader" id="loader">
+  <div class="spinner"></div>
+  <div class="loader-msg" id="loader-msg">Processing…</div>
+  <div class="loader-sub" id="loader-sub"></div>
+</div>
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🔄</div>
+    <div class="logo-text">
+      <div class="logo-title">PeopleSoft → Workday Migration Agent</div>
+      <div class="logo-sub">HR Data Migration · Accenture</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <span class="hdr-step" id="hdr-step">Step 1 of 5</span>
+    <span class="hdr-badge">⚡ Powered by AI</span>
+  </div>
+</header>
+
+<div class="app">
+  <!-- Sidebar -->
+  <aside>
+    <div class="nav-step active" id="nav-0" onclick="goTo(0)"><div class="sn">1</div>Upload Files</div>
+    <div class="nav-step locked" id="nav-1" onclick="goTo(1)"><div class="sn">2</div>Mapping Review</div>
+    <div class="nav-step locked" id="nav-2" onclick="goTo(2)"><div class="sn">3</div>Data Preview</div>
+    <div class="nav-step locked" id="nav-3" onclick="goTo(3)"><div class="sn">4</div>Validation</div>
+    <div class="nav-step locked" id="nav-4" onclick="goTo(4)"><div class="sn">5</div>Export</div>
+    <div class="nav-divider"></div>
+    <div class="nav-step locked" id="nav-5" onclick="goTo(5)"><div class="sn">📖</div>Knowledge Articles</div>
+    <div class="nav-ka-label">📖 Knowledge Articles<br><span style="font-size:10px;font-weight:400;color:var(--gold);opacity:.85">Mapping Spec · DGW Template · Rules</span></div>
+    <div class="nav-info">
+      <b>Source:</b> PeopleSoft<br>
+      <b>Target:</b> Workday<br>
+      <b>Domains:</b> NAME · EMAIL<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;PHONE · PERSON ID<br>
+      <b>Rules:</b> R01 – R11
+    </div>
+  </aside>
+
+  <main>
+
+    <!-- PAGE 0: UPLOAD -->
+    <div class="page active" id="page-0">
+      <div class="hero">
+        <h1>🔄 PeopleSoft → Workday Migration Agent</h1>
+        <p>Upload your PeopleSoft source data. The agent reads the built-in Knowledge Article mapping rules, applies all 11 transformation rules, validates every field, and generates a Workday-ready DGW output file.</p>
+        <div class="feature-grid">
+          <div class="feat"><div class="feat-icon">📖</div><h3>Knowledge-article driven</h3><p>Accenture PS→WD mapping rules are embedded as a Knowledge Article — the agent applies them automatically</p></div>
+          <div class="feat"><div class="feat-icon">⚙️</div><h3>11 transformation rules</h3><p>Zero-pad IDs, date conversion, suffix normalisation, email validation, title-case and more</p></div>
+          <div class="feat"><div class="feat-icon">✅</div><h3>Full validation</h3><p>Mandatory fields, duplicate detection, referential integrity, format checks with a detailed report</p></div>
+        </div>
+      </div>
+
+      <!-- Source Data -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📊 Source HR Data — PeopleSoft Export</div>
+          <span style="font-size:12px;color:var(--text-3)">Excel export from PeopleSoft (4 sheets)</span>
+        </div>
+        <div class="card-body">
+          <div class="section-lbl">① Upload PeopleSoft Source File</div>
+          <div class="dz" id="dz-src" style="max-width:400px">
+            <input type="file" accept=".xlsx,.xls,.csv" onchange="handleSrc(event)">
+            <div class="dz-icon">📊</div>
+            <div class="dz-title">Drop PeopleSoft Excel file here</div>
+            <div class="dz-sub">xlsx · xls · csv &nbsp;|&nbsp; Worker Names · Email · Phone · National IDs</div>
+            <div class="dz-fi" id="fi-src"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Knowledge Articles -->
+      <div class="ka-card">
+        <div class="ka-header">
+          <div class="ka-title">📖 Knowledge Articles <span class="ka-badge">UPLOAD REQUIRED</span></div>
+          <span style="font-size:12px;color:var(--gold);opacity:.85">Mapping Specification · Workday DGW Template</span>
+        </div>
+        <div class="ka-body">
+          <div class="alert alert-warn">⚠️ <span>Upload both Knowledge Article files below. The agent reads your <strong>Mapping File</strong> to extract field rules and your <strong>DGW Template</strong> to define the target column structure.</span></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <div>
+              <div class="ka-section-lbl">📖 Knowledge Article — Mapping File</div>
+              <div class="dz ka-zone" id="dz-map">
+                <input type="file" accept=".xlsx,.xls,.csv" onchange="handleMap(event)">
+                <div class="dz-icon">🔗</div>
+                <div class="dz-title">Upload Mapping Specification</div>
+                <div class="dz-sub">Accenture PS→WD Mapping V1 · xlsx · xls · csv</div>
+                <div class="dz-fi" id="fi-map"></div>
+              </div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:6px;line-height:1.6">
+                Expected sheets: <code>Worker Name Data</code> · <code>Worker Email Data</code> · <code>Worker Phone Data</code> · <code>Worker National ID Data</code> (+ others ignored)
+              </div>
+            </div>
+            <div>
+              <div class="ka-section-lbl">📖 Knowledge Article — Workday DGW Template</div>
+              <div class="dz ka-zone" id="dz-dgw">
+                <input type="file" accept=".xlsx,.xls" onchange="handleDgw(event)">
+                <div class="dz-icon">📋</div>
+                <div class="dz-title">Upload Workday DGW Template</div>
+                <div class="dz-sub">Workday DGW Sample Expected File · xlsx · xls</div>
+                <div class="dz-fi" id="fi-dgw"></div>
+              </div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:6px;line-height:1.6">
+                The agent extracts column structure from each sheet and uses it as the output format.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status + Run -->
+      <div class="card">
+        <div class="card-body">
+          <div class="upload-pills">
+            <span class="pill" id="pill-src">⬜ PeopleSoft Source Data</span>
+            <span class="pill" id="pill-map">⬜ Mapping File (Knowledge Article)</span>
+            <span class="pill" id="pill-dgw">⬜ DGW Template (Knowledge Article)</span>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="btn-run" onclick="runAgent()" disabled>⚡ Run Migration Agent</button>
+            <button class="btn btn-ghost btn-sm" onclick="loadDemo()">📦 Load Demo Data (30 workers)</button>
+            <button class="btn btn-outline btn-sm" onclick="goTo(5)">📖 View Knowledge Articles</button>
+          </div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:10px">All 3 files must be uploaded to enable the agent.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 1: MAPPING REVIEW -->
+    <div class="page" id="page-1">
+      <div class="page-title">📖 Knowledge Article — Mapping Review</div>
+      <div class="page-sub">Field mapping rules from the Accenture PS→WD Knowledge Article — review before transformation is applied</div>
+      <div class="stats" id="map-stats"></div>
+      <div id="map-alerts"></div>
+      <div class="ka-card">
+        <div class="ka-header"><div class="ka-title">📖 Knowledge Article <span class="ka-badge">MAPPING SPECIFICATION</span></div></div>
+        <div class="ka-body">
+          <div class="card-title" style="margin-bottom:10px;font-size:13px">Parsed Mapping Rules — Accenture PeopleSoft to Workday Mapping V1</div>
+          <div class="tbl-wrap scroll-pane">
+            <table>
+              <thead><tr><th>#</th><th>PS Table</th><th>PS Field</th><th>Workday Table</th><th>Workday Field</th><th>Required</th><th>Type</th><th>Transformation / Logic</th><th>Confidence</th></tr></thead>
+              <tbody id="tb-map-review"></tbody>
+            </table>
+          </div>
+          <div style="margin-top:14px;display:flex;justify-content:flex-end">
+            <button class="btn btn-primary" onclick="applyMappings()">Apply & Transform →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 2: DATA PREVIEW -->
+    <div class="page" id="page-2">
+      <div class="page-title">📄 Populated Workday Data</div>
+      <div class="page-sub">Transformed records — all 11 rules applied, ready for Workday load</div>
+      <div class="stats" id="preview-stats"></div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📄 Workday DGW Sheets</div>
+          <span id="preview-count" style="font-size:12px;color:var(--text-3)"></span>
+        </div>
+        <div class="card-body">
+          <div class="tab-bar" id="preview-tabs"></div>
+          <div id="preview-panes"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 3: VALIDATION -->
+    <div class="page" id="page-3">
+      <div class="page-title">🔍 Validation Report</div>
+      <div class="page-sub">Automated quality checks across all Workday target sheets</div>
+      <div class="stats" id="val-stats"></div>
+      <div id="val-alerts"></div>
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-header"><div class="card-title">🔍 Field-Level Checks</div></div>
+        <div class="card-body" style="padding:0">
+          <div class="tbl-wrap scroll-pane">
+            <table>
+              <thead><tr><th>Target Sheet</th><th>Field</th><th>Check</th><th>Records</th><th>Passed</th><th>Failed</th><th>Status</th><th>Action</th></tr></thead>
+              <tbody id="tb-val"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">⚙️ Transformation Log — Rules Applied</div></div>
+        <div class="card-body" style="padding:0">
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Rule</th><th>Description</th><th>Source Field</th><th>Target Field</th><th>Example</th><th>Records</th></tr></thead>
+              <tbody id="tb-trans"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 4: EXPORT -->
+    <div class="page" id="page-4">
+      <div class="page-title">⬇️ Export & Download</div>
+      <div class="page-sub">Download Workday-ready output files</div>
+      <div id="export-alerts"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="card">
+          <div class="card-body">
+            <div class="section-lbl" style="margin-bottom:12px">Download Options</div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <button class="btn btn-success" onclick="downloadDGW()">⬇️ Download DGW File (Excel — all sheets)</button>
+              <button class="btn btn-outline btn-sm" onclick="downloadMappingReport()">⬇️ Download Mapping Report (Excel)</button>
+              <div id="csv-btns" style="display:flex;flex-direction:column;gap:7px;margin-top:4px"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-body">
+            <div class="section-lbl" style="margin-bottom:10px">Migration Summary</div>
+            <div id="export-checklist"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><div class="card-title">📋 Recommended Workday Load Sequence</div></div>
+        <div class="card-body">
+          <div class="load-seq" id="load-seq"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE 5: KNOWLEDGE ARTICLES -->
+    <div class="page" id="page-5">
+      <div class="page-title">📖 Knowledge Articles</div>
+      <div class="page-sub">Reference documents used to drive the migration — Mapping Specification, DGW Template, and Transformation Rules</div>
+
+      <!-- Mapping Spec KA -->
+      <div class="ka-card">
+        <div class="ka-header">
+          <div class="ka-title">📖 Knowledge Article <span class="ka-badge">MAPPING SPECIFICATION</span></div>
+          <span style="font-size:12px;color:var(--gold);opacity:.85">Accenture PeopleSoft to Workday Mapping V1</span>
+        </div>
+        <div class="ka-body">
+          <div class="alert alert-ka">📖 <span>Upload the <strong>Mapping Specification</strong> file on Step 1 — the agent will parse and display all field mapping rules here.</span></div>
+          <div id="ka-map-empty" class="alert alert-warn" style="display:none">⬆️ No mapping file uploaded yet. Go to Step 1 and upload the Mapping Specification Knowledge Article.</div>
+          <select class="ka-sheet-select" id="ka-sheet-sel" onchange="renderKASheet()">
+            <option value="all">All Domains</option>
+          </select>
+          <div class="tbl-wrap scroll-pane" style="max-height:380px">
+            <table>
+              <thead><tr><th>#</th><th>PS Table</th><th>PS Field</th><th>Workday Table</th><th>Workday Field</th><th>Required</th><th>Type</th><th>Transformation / Logic</th><th>Confidence</th></tr></thead>
+              <tbody id="tb-ka-map"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- DGW Template KA -->
+      <div class="ka-card">
+        <div class="ka-header">
+          <div class="ka-title">📖 Knowledge Article <span class="ka-badge">DGW TEMPLATE</span></div>
+          <span style="font-size:12px;color:var(--gold);opacity:.85">Workday DGW Sample Expected File</span>
+        </div>
+        <div class="ka-body">
+          <div class="alert alert-ka">📋 <span>Upload the <strong>DGW Template</strong> file on Step 1 — the agent will extract the column structure from each sheet and display it here.</span></div>
+          <div id="ka-dgw-empty" class="alert alert-warn" style="display:none">⬆️ No DGW template uploaded yet. Go to Step 1 and upload the Workday DGW Template Knowledge Article.</div>
+          <div id="ka-dgw-tabs" class="tab-bar"></div>
+          <div id="ka-dgw-panes"></div>
+        </div>
+      </div>
+
+      <!-- Transformation Rules KA -->
+      <div class="ka-card">
+        <div class="ka-header">
+          <div class="ka-title">📖 Knowledge Article <span class="ka-badge">TRANSFORMATION RULES</span></div>
+          <span style="font-size:12px;color:var(--gold);opacity:.85">11 rules applied by the migration agent</span>
+        </div>
+        <div class="ka-body">
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Rule</th><th>Name</th><th>Applies To</th><th>Source Example</th><th>Workday Output</th></tr></thead>
+              <tbody id="tb-rules"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Source Detection Reference -->
+      <div class="card">
+        <div class="card-header"><div class="card-title">🔍 Source Sheet Auto-Detection</div></div>
+        <div class="card-body" style="padding:0">
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Domain</th><th>Detected By Column</th><th>PS Table</th><th>Workday Target Sheet</th><th>Key Fields</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Worker Names</strong></td><td class="mono">FIRST_NAME / SALUTATION / NAME_PREFIX</td><td class="mono">PS_NAMES</td><td>NAME</td><td class="mono">EMPLID · PREHIRE_EFFECTIVE_DATE · FIRST_NAME · LAST_NAME</td></tr>
+                <tr><td><strong>Email</strong></td><td class="mono">EMAIL_ADDR / E_ADDR_TYPE</td><td class="mono">PS_EMAIL_ADDRESSES</td><td>EMAIL ADDRESS</td><td class="mono">EMPLID · E_ADDR_TYPE · PREF_EMAIL_FLAG · EMAIL_ADDR</td></tr>
+                <tr><td><strong>Phone</strong></td><td class="mono">PHONE / PHONE_TYPE / PREF_PHONE_FLAG</td><td class="mono">PS_PERSONAL_PHONE</td><td>PERSON PHONE</td><td class="mono">EMPLID · PHONE_TYPE · PREF_PHONE_FLAG · COUNTRY_CODE · PHONE</td></tr>
+                <tr><td><strong>National ID</strong></td><td class="mono">NATIONAL_ID / NATIONAL_ID_TYPE</td><td class="mono">PS_PERS_NID</td><td>PERSON ID</td><td class="mono">EMPLID · NATIONAL_ID · NATIONAL_ID_TYPE</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  KNOWLEDGE ARTICLES — MAPPING RULES (populated by user upload)
+// ═══════════════════════════════════════════════════════════════
+const KA_MAPPING = []; // Filled when user uploads the Mapping Specification file
+const _KA_MAPPING_SEED = [
+  // Seed data used ONLY when the user uploads and we call parseKAMapping.
+  // This array is never read directly — KA_MAPPING starts empty.
+  ['PS_NAMES','EMPLID','WORKER NAME DATA','Worker ID','Required','Direct','Zero-pad to 6 digits  e.g. 10021 → 010021','High'],
+  ['PS_JOB','EMPL_TYPE','WORKER NAME DATA','Worker Type','Required','Direct','Pass-through: EE = Employee, CWK = Contingent Worker','High'],
+  ['PS_NAMES','PREHIRE_EFFECTIVE_DATE','WORKER NAME DATA','Prehire Effective Date','Optional','Direct','ISO-8601 pass-through or Excel serial → YYYY-MM-DD','High'],
+  // Legal Name Data
+  ['PS_NAMES','COUNTRY_CODE','LEGAL NAME DATA','Country ISO Code','Required','Derived','Numeric country code → ISO 3166-1  e.g. 1 → USA','Medium'],
+  ['PS_NAMES','NAME_PREFIX','LEGAL NAME DATA','Prefix','Optional','Direct','Pass-through; valid: Mr. Ms. Mrs. Dr.','High'],
+  ['PS_NAMES','PREHIRE_EFFECTIVE_DATE','LEGAL NAME DATA','Name Effective Date','Optional','Direct','Same conversion as Prehire Effective Date','High'],
+  ['PS_NAMES','FIRST_NAME','LEGAL NAME DATA','Legal First Name','Optional','Direct','Trim + title-case  e.g. JOHN → John','High'],
+  ['PS_NAMES','MIDDLE_NAME','LEGAL NAME DATA','Legal Middle Name','Optional','Direct','Trim + title-case; blank if null','High'],
+  ['PS_NAMES','LAST_NAME','LEGAL NAME DATA','Legal Last Name','Optional','Direct','Trim + title-case  e.g. DOE → Doe','High'],
+  ['PS_NAMES','NAME_SUFFIX','LEGAL NAME DATA','Suffix','Optional','Direct','Junior→Jr.  Senior→Sr.  II III IV pass-through','Medium'],
+  // Worker Email Data
+  ['PS_EMAIL_ADDRESSES','EMPLID','WORKER EMAIL DATA','Worker ID','Required','Direct','Zero-pad to 6 digits','High'],
+  ['PS_JOB','EMPL_TYPE','WORKER EMAIL DATA','Worker Type','Required','Direct','Pass-through: EE / CWK','High'],
+  ['PS_EMAIL_ADDRESSES','E_ADDR_TYPE','WORKER EMAIL DATA','Email Type','Required','Direct','Pass-through; valid: BUSN HOME OTHER','High'],
+  ['PS_EMAIL_ADDRESSES','PREF_EMAIL_FLAG','WORKER EMAIL DATA','Primary','Required','Direct','Y/N; exactly 1 Y per worker','High'],
+  ['PS_EMAIL_ADDRESSES','EMAIL_ADDR','WORKER EMAIL DATA','Email Address','Required','Direct','Lowercase + regex validate','High'],
+  // Worker Phone Number Data
+  ['PS_PERSONAL_PHONE','EMPLID','WORKER PHONE NUMBER DATA','Worker ID','Required','Direct','Zero-pad to 6 digits','High'],
+  ['PS_JOB','EMPL_TYPE','WORKER PHONE NUMBER DATA','Worker Type','Required','Direct','Pass-through: EE / CWK','High'],
+  ['PS_PERSONAL_PHONE','PHONE_TYPE','WORKER PHONE NUMBER DATA','Phone Number Type','Required','Direct','Pass-through; valid: BUSN HOME MOBILE','High'],
+  ['PS_PERSONAL_PHONE','PREF_PHONE_FLAG','WORKER PHONE NUMBER DATA','Primary','Required','Direct','Y/N; 1 per worker per type','High'],
+  ['PS_PERSONAL_PHONE','COUNTRY_CODE','WORKER PHONE NUMBER DATA','International Phone Code','Optional','Direct','Integer string; strip + prefix  e.g. +1 → 1','High'],
+  ['PS_PERSONAL_PHONE','PHONE','WORKER PHONE NUMBER DATA','Phone Number','Required','Direct','Pass-through  e.g. 502-5324','High'],
+  ['PS_PERSONAL_PHONE','EXTENSION','WORKER PHONE NUMBER DATA','Phone Extension','Optional','Direct','Integer string; blank if null','High'],
+  // National ID Data
+  ['PS_PERS_NID','EMPLID','NATIONAL ID DATA','Worker ID','Required','Direct','Zero-pad to 6 digits','High'],
+  ['PS_JOB','PER_ORG / EMPL_TYPE','NATIONAL ID DATA','Worker Type','Required','Direct','Pass-through: EE / CWK','High'],
+  ['PS_PERS_NID','NATIONAL_ID','NATIONAL ID DATA','National ID','Required','Direct','Pass-through; do not hash','High'],
+  ['PS_PERS_NID','NATIONAL_ID_TYPE','NATIONAL ID DATA','National ID Type','Required','Direct','PR = Permanent Resident; validate vs client ref table','High'],
+  ['PS_PERS_NID','NATIONAL_ISSUED_DT','NATIONAL ID DATA','Issued Date','Optional','Direct','ISO-8601 YYYY-MM-DD; blank if null','Medium'],
+  ['PS_PERS_NID','NATIONAL_EXPIRATION_DT','NATIONAL ID DATA','Expiration Date','Optional','Direct','ISO-8601 YYYY-MM-DD; blank if null','Medium'],
+  ['PS_PERS_NID','NATIONAL_VERIFY_DT','NATIONAL ID DATA','Verification Date','Optional','Direct','ISO-8601 YYYY-MM-DD; blank if null','Medium'],
+  ['PS_PERS_NID','NATIONAL_SERIES','NATIONAL ID DATA','Series','Optional','Direct','Pass-through; blank if null','Low'],
+  ['PS_PERS_NID','NATIONAL_ISSUING_AGENCY','NATIONAL ID DATA','Issuing Agency','Optional','Direct','Pass-through; blank if null','Low'],
+]; // end _KA_MAPPING_SEED (not used at runtime — only KA_MAPPING is)
+
+// DGW Template schema — populated when user uploads DGW Template file
+const DGW_SCHEMA = {};
+
+// Transformation rules reference
+const RULES = [
+  ['R01','Zero-Pad Worker ID','Worker ID (all domains)','10021','010021  |  str(int(id)).zfill(6)'],
+  ['R02','Excel Serial → ISO Date','Prehire Effective Date, Name Effective Date','35217','2021-01-01  |  datetime(1899-12-30)+timedelta(serial)'],
+  ['R03','ISO Date Pass-Through','All date fields','2021-01-01','No change — already ISO-8601'],
+  ['R04','Suffix Normalisation','Legal Name – Suffix','Junior','Jr.  |  Junior→Jr. Senior→Sr. II III IV'],
+  ['R05','Email Lowercase + Validate','Email Address','User@Co.COM','user@co.com  |  .lower() + regex validation'],
+  ['R06','Phone/Email Type Pass-Through','Phone Number Type, Email Type','BUSN','BUSN  |  valid: BUSN HOME MOBILE OTHER'],
+  ['R07','Primary Flag Enforcement','Primary (Email & Phone)','Y','Exactly 1 Y per worker per type enforced'],
+  ['R08','Null → Blank','Middle Name, Suffix, Extension, optional fields','NaN / NULL','"" (empty string)'],
+  ['R09','Name Title-Case','Legal First / Middle / Last Name','JOHN DOE','John Doe  |  .strip().title()'],
+  ['R10','National ID Type Validation','National ID Type','PR','Validated vs allowed list: PR SSN NIN SIN TFN'],
+  ['R11','Country Code Numeric','International Phone Code','+44 / 1 / 91','44 / 1 / 91  |  strip + prefix, integer string'],
+];
+
+// ═══════════════════════════════════════════════════════════════
+//  DEMO DATA (30 workers, matching actual input format)
+// ═══════════════════════════════════════════════════════════════
+const DEMO_SRC = {
+  'Worker Names Data':[
+    ['EMPLID','PREHIRE_EFFECTIVE_DATE','NAME_PREFIX','FIRST_NAME','MIDDLE_NAME','LAST_NAME','NAME_SUFFIX'],
+    [10021,'2021-01-01','Mr.','John','Mark','Doe','Junior'],[10022,'2021-02-15','Ms.','Emma','Rose','Smith',null],
+    [10023,'2021-03-10','Mr.','Michael','James','Johnson','Sr.'],[10024,'2021-04-05','Mrs.','Olivia','Grace','Brown',null],
+    [10025,'2021-05-20','Mr.','William','Scott','Davis','Junior'],[10026,'2021-06-18','Ms.','Sophia','Marie','Wilson',null],
+    [10027,'2021-07-12','Mr.','Daniel','Lee','Taylor','III'],[10028,'2021-08-01','Mrs.','Ava','Lynn','Anderson',null],
+    [10029,'2021-09-14','Mr.','Matthew','Ryan','Thomas','Sr.'],[10030,'2021-10-08','Ms.','Isabella','Jane','Jackson',null],
+    [10031,'2021-11-22','Mr.','Christopher','Paul','White','Junior'],[10032,'2021-12-15','Mrs.','Mia','Kate','Harris',null],
+    [10033,'2022-01-10','Mr.','Ethan','David','Martin','II'],[10034,'2022-02-07','Ms.','Charlotte','Anne','Thompson',null],
+    [10035,'2022-03-19','Mr.','Alexander','John','Garcia','Sr.'],[10036,'2022-04-25','Mrs.','Amelia','Faith','Martinez',null],
+    [10037,'2022-05-16','Mr.','Benjamin','Luke','Robinson','Junior'],[10038,'2022-06-21','Ms.','Harper','Nicole','Clark',null],
+    [10039,'2022-07-13','Mr.','Jacob','Alan','Rodriguez','III'],[10040,'2022-08-29','Mrs.','Evelyn','Ruth','Lewis',null],
+    [10041,'2022-09-09','Mr.','Logan','Eric','Lee','Sr.'],[10042,'2022-10-17','Ms.','Abigail','Dawn','Walker',null],
+    [10043,'2022-11-28','Mr.','Samuel','Keith','Hall','Junior'],[10044,'2022-12-12','Mrs.','Ella','Joy','Allen',null],
+    [10045,'2023-01-23','Mr.','Henry','Dean','Young','II'],[10046,'2023-02-14','Ms.','Scarlett','Hope','Hernandez',null],
+    [10047,'2023-03-30','Mr.','Joseph','Craig','King','Sr.'],[10048,'2023-04-18','Mrs.','Victoria','Beth','Wright',null],
+    [10049,'2023-05-26','Mr.','Andrew','Shane','Lopez','Junior'],[10050,'2023-06-15','Ms.','Lily','Claire','Hill',null],
+  ],
+  'Email Data':[
+    ['EMPLID','E_ADDR_TYPE','PREF_EMAIL_FLAG','EMAIL_ADDR'],
+    [10021,'BUSN','Y','aarav.sharma@company.com'],[10022,'BUSN','Y','vivaan.patel@company.com'],
+    [10023,'BUSN','Y','aditya.reddy@company.com'],[10024,'BUSN','Y','krishna.kumar@company.com'],
+    [10025,'BUSN','Y','arjun.verma@company.com'],[10026,'BUSN','Y','sneha.iyer@company.com'],
+    [10027,'BUSN','Y','priya.nair@company.com'],[10028,'BUSN','Y','ananya.gupta@company.com'],
+    [10029,'BUSN','Y','kavya.menon@company.com'],[10030,'BUSN','Y','diya.shah@company.com'],
+    [10031,'BUSN','Y','rohan.singh@company.com'],[10032,'BUSN','Y','karan.joshi@company.com'],
+    [10033,'BUSN','Y','rahul.malhotra@company.com'],[10034,'BUSN','Y','nikhil.mehta@company.com'],
+    [10035,'BUSN','Y','varun.chopra@company.com'],[10036,'BUSN','Y','pooja.agarwal@company.com'],
+    [10037,'BUSN','Y','neha.bansal@company.com'],[10038,'BUSN','Y','ritu.saxena@company.com'],
+    [10039,'BUSN','Y','meera.kapoor@company.com'],[10040,'BUSN','Y','ishita.arora@company.com'],
+    [10041,'BUSN','Y','sanjay.mishra@company.com'],[10042,'BUSN','Y','amit.tiwari@company.com'],
+    [10043,'BUSN','Y','deepak.yadav@company.com'],[10044,'BUSN','Y','manish.sharma@company.com'],
+    [10045,'BUSN','Y','vikram.rana@company.com'],[10046,'BUSN','Y','sonal.jain@company.com'],
+    [10047,'BUSN','Y','swati.goyal@company.com'],[10048,'BUSN','Y','ankita.sethi@company.com'],
+    [10049,'BUSN','Y','tanvi.khanna@company.com'],[10050,'BUSN','Y','shreya.mehra@company.com'],
+  ],
+  'Phone Data':[
+    ['EMPLID','PHONE_TYPE','PREF_PHONE_FLAG','COUNTRY_CODE','PHONE','EXTENSION'],
+    [10021,'BUSN','Y',1,'502-5324',101],[10022,'BUSN','Y',1,'614-7821',102],
+    [10023,'BUSN','Y',44,'721-4568',103],[10024,'BUSN','Y',91,'834-2197',104],
+    [10025,'BUSN','Y',1,'945-6732',105],[10026,'BUSN','Y',61,'358-7429',106],
+    [10027,'BUSN','Y',91,'672-1954',107],[10028,'BUSN','Y',1,'583-4217',108],
+    [10029,'BUSN','Y',44,'796-3285',109],[10030,'BUSN','Y',91,'428-6513',110],
+    [10031,'BUSN','Y',1,'917-2846',111],[10032,'BUSN','Y',61,'365-8974',112],
+    [10033,'BUSN','Y',91,'752-1638',113],[10034,'BUSN','Y',1,'684-5291',114],
+    [10035,'BUSN','Y',44,'531-7462',115],[10036,'BUSN','Y',91,'847-3125',116],
+    [10037,'BUSN','Y',1,'298-6547',117],[10038,'BUSN','Y',61,'714-2893',118],
+    [10039,'BUSN','Y',91,'563-9281',119],[10040,'BUSN','Y',1,'486-1735',120],
+    [10041,'BUSN','Y',44,'932-5478',121],[10042,'BUSN','Y',91,'651-2847',122],
+    [10043,'BUSN','Y',1,'374-9182',123],[10044,'BUSN','Y',61,'825-4631',124],
+    [10045,'BUSN','Y',91,'719-3852',125],[10046,'BUSN','Y',1,'542-8719',126],
+    [10047,'BUSN','Y',44,'683-2954',127],[10048,'BUSN','Y',91,'958-4176',128],
+    [10049,'BUSN','Y',1,'427-6385',129],[10050,'BUSN','Y',61,'791-5248',130],
+  ],
+  'National IDs':[
+    ['EMPLID','NATIONAL_ID','NATIONAL_ID_TYPE'],
+    [10021,412998000,'PR'],[10022,523187641,'PR'],[10023,634298752,'PR'],[10024,745309863,'PR'],
+    [10025,856410974,'PR'],[10026,967521085,'PR'],[10027,178632196,'PR'],[10028,289743207,'PR'],
+    [10029,390854318,'PR'],[10030,401965429,'PR'],[10031,512076530,'PR'],[10032,623187641,'PR'],
+    [10033,734298752,'PR'],[10034,845309863,'PR'],[10035,956410974,'PR'],[10036,167521085,'PR'],
+    [10037,278632196,'PR'],[10038,389743207,'PR'],[10039,490854318,'PR'],[10040,501965429,'PR'],
+    [10041,612076530,'PR'],[10042,723187641,'PR'],[10043,834298752,'PR'],[10044,945309863,'PR'],
+    [10045,156410974,'PR'],[10046,267521085,'PR'],[10047,378632196,'PR'],[10048,489743207,'PR'],
+    [10049,590854318,'PR'],[10050,601965429,'PR'],
+  ]
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════
+const S = { srcData:{}, output:{}, valResults:[], transLog:[], srcReady:false, mapReady:false, dgwReady:false, srcCols:new Set() };
+
+// ═══════════════════════════════════════════════════════════════
+//  TRANSFORMATION ENGINE
+// ═══════════════════════════════════════════════════════════════
+const SUFFIX_MAP = {junior:'Jr.',jr:'Jr.',senior:'Sr.',sr:'Sr.',ii:'II',iii:'III',iv:'IV'};
+const EMAIL_RE   = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ALLOWED_NID= new Set(['PR','SSN','NIN','SIN','TFN']);
+const EXCEL_EPOCH= new Date(1899,11,30);
+
+function r01_zeroPad(v) {
+  if(v===null||v===undefined||v==='')return '';
+  const n=parseInt(String(v).replace(/\D/g,''));
+  return isNaN(n)?String(v).padStart(6,'0'):String(n).padStart(6,'0');
+}
+function r02r03_date(v) {
+  if(v===null||v===undefined||v==='')return '';
+  const s=String(v).trim();
+  if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.substring(0,10); // R03 pass-through
+  const n=parseFloat(s);
+  if(!isNaN(n)&&n>20000&&n<60000){ // R02 Excel serial
+    const d=new Date(EXCEL_EPOCH.getTime()+n*86400000);
+    return d.toISOString().substring(0,10);
+  }
+  const d=new Date(s);
+  return isNaN(d.getTime())?s:d.toISOString().substring(0,10);
+}
+function r04_suffix(v) {
+  if(v===null||v===undefined)return '';
+  const s=String(v).trim();
+  if(!s||s.toLowerCase()==='none'||s.toLowerCase()==='null')return '';
+  return SUFFIX_MAP[s.toLowerCase()]||s;
+}
+function r05_email(v) {
+  if(v===null||v===undefined||v==='')return '';
+  const e=String(v).trim().toLowerCase();
+  return e; // R05 lowercase + format already enforced by source
+}
+function r08_clean(v) {
+  if(v===null||v===undefined)return '';
+  const s=String(v).trim();
+  return (s===''||s.toLowerCase()==='null'||s.toLowerCase()==='none')?'':s;
+}
+function r09_titleCase(v) {
+  if(!v||v==='')return '';
+  return String(v).trim().replace(/\w\S*/g,t=>t.charAt(0).toUpperCase()+t.slice(1).toLowerCase());
+}
+function r11_countryCode(v) {
+  if(v===null||v===undefined||v==='')return '';
+  const s=String(v).trim().replace(/^\+/,'');
+  const n=parseInt(s);
+  return isNaN(n)?s:String(n);
+}
+
+// Drop output columns where every row is blank (source field not present in input)
+function filterEmptyColumns(headers, rows) {
+  const keep = headers.map((_, ci) =>
+    rows.some(r => r[ci] !== '' && r[ci] !== null && r[ci] !== undefined)
+  );
+  return {
+    headers: headers.filter((_, i) => keep[i]),
+    rows:    rows.map(r => r.filter((_, i) => keep[i]))
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DOMAIN DETECTION
+// ═══════════════════════════════════════════════════════════════
+function detectDomain(hdrs) {
+  const lc=hdrs.map(h=>String(h||'').toLowerCase().trim());
+  if(lc.includes('first_name')||lc.includes('salutation')||lc.includes('name_prefix'))return 'names';
+  if(lc.includes('email_addr')||lc.includes('email address')||lc.includes('e_addr_type'))return 'email';
+  if(lc.includes('phone')||lc.includes('phone_type')||lc.includes('pref_phone_flag'))return 'phone';
+  if(lc.includes('national_id')||lc.includes('national_id_type'))return 'nid';
+  return null;
+}
+
+function colIdx(hdrs, ...candidates) {
+  const lc=hdrs.map(h=>String(h||'').toLowerCase().trim());
+  for(const c of candidates){const i=lc.indexOf(c.toLowerCase().trim());if(i>=0)return i;}
+  return -1;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  TRANSFORM ALL DOMAINS
+// ═══════════════════════════════════════════════════════════════
+function transformAll() {
+  S.output={}; S.transLog=[];
+
+  // Iterate source sheets, detect domain
+  for(const [sheetName, rows] of Object.entries(S.srcData)) {
+    if(!rows||rows.length<2)continue;
+    const hdrIdx=findSrcHeaderRow(rows);
+    const hdrs=rows[hdrIdx].map(h=>String(h||'').trim());
+    const domain=detectDomain(hdrs);
+    const data=rows.slice(hdrIdx+1);
+
+    if(domain==='names')    S.output['NAME']         = transformNames(hdrs, data);
+    else if(domain==='email') S.output['EMAIL ADDRESS'] = transformEmail(hdrs, data);
+    else if(domain==='phone') S.output['PERSON PHONE']  = transformPhone(hdrs, data);
+    else if(domain==='nid')   S.output['PERSON ID']     = transformNID(hdrs, data);
+  }
+
+  // Build transformation log
+  S.transLog=[
+    {Rule:'R01',Desc:'Zero-pad Worker ID to 6 digits',Source:'EMPLID',Target:'Worker ID',Example:'10021 → 010021',Records:countRecs()},
+    {Rule:'R02/R03',Desc:'Date conversion',Source:'PREHIRE_EFFECTIVE_DATE',Target:'Prehire Effective Date',Example:'2021-01-01 → 2021-01-01',Records:S.output['NAME']?.rows.length||0},
+    {Rule:'R04',Desc:'Suffix normalisation',Source:'NAME_SUFFIX',Target:'Suffix',Example:'Junior → Jr.',Records:S.output['NAME']?.rows.length||0},
+    {Rule:'R05',Desc:'Email lowercase + validate',Source:'EMAIL_ADDR',Target:'Email Address',Example:'User@Co.COM → user@co.com',Records:S.output['EMAIL ADDRESS']?.rows.length||0},
+    {Rule:'R08',Desc:'Null → blank string',Source:'(all nullable fields)','Target':'(various)',Example:'null → ""',Records:countRecs()},
+    {Rule:'R09',Desc:'Name title-case',Source:'FIRST/MIDDLE/LAST_NAME',Target:'First/Middle/Last Name',Example:'JOHN DOE → John Doe',Records:S.output['NAME']?.rows.length||0},
+    {Rule:'R11',Desc:'Country code numeric',Source:'COUNTRY_CODE',Target:'International Phone Code',Example:'+44 → 44',Records:S.output['PERSON PHONE']?.rows.length||0},
+  ];
+}
+
+function countRecs(){return Object.values(S.output).reduce((a,v)=>a+(v.rows?.length||0),0);}
+
+function transformNames(hdrs, data) {
+  const pid=colIdx(hdrs,'EMPLID','PERSON_ID_EXTERNAL','Worker ID');
+  const dt =colIdx(hdrs,'PREHIRE_EFFECTIVE_DATE','START_DATE','EFFDT');
+  const pfx=colIdx(hdrs,'NAME_PREFIX','SALUTATION');
+  const fn =colIdx(hdrs,'FIRST_NAME');
+  const mn =colIdx(hdrs,'MIDDLE_NAME');
+  const ln =colIdx(hdrs,'LAST_NAME');
+  const sfx=colIdx(hdrs,'NAME_SUFFIX','SUFFIX');
+  const rows=data.map(r=>{
+    const wid=r01_zeroPad(pid>=0?r[pid]:'');
+    const dt_=r02r03_date(dt>=0?r[dt]:'');
+    return [
+      wid,                                    // Worker ID
+      dt_,                                    // Prehire Effective Date
+      r08_clean(pfx>=0?r[pfx]:''),            // Prefix
+      dt_,                                    // Name Effective Date (same as prehire)
+      r09_titleCase(fn>=0?r[fn]:''),          // First Name
+      r09_titleCase(r08_clean(mn>=0?r[mn]:'')), // Middle Name
+      r09_titleCase(ln>=0?r[ln]:''),          // Last Name
+      r04_suffix(sfx>=0?r[sfx]:''),           // Suffix
+    ];
+  });
+  const H_NAME=DGW_SCHEMA['NAME']||['Worker ID','Prehire Effective Date','Prefix','Name Effective Date','First Name','Middle Name','Last Name','Suffix'];
+  return filterEmptyColumns(H_NAME, rows);
+}
+
+function transformEmail(hdrs, data) {
+  const pid=colIdx(hdrs,'EMPLID','Worker ID','PERSON_ID_EXTERNAL');
+  const typ=colIdx(hdrs,'E_ADDR_TYPE','Email Type');
+  const pri=colIdx(hdrs,'PREF_EMAIL_FLAG','Primary');
+  const adr=colIdx(hdrs,'EMAIL_ADDR','Email Address');
+  const rows=data.map(r=>[
+    r01_zeroPad(pid>=0?r[pid]:''),
+    r08_clean(typ>=0?r[typ]:''),
+    r08_clean(pri>=0?r[pri]:''),
+    r05_email(adr>=0?r[adr]:''),
+  ]);
+  const H_EMAIL=DGW_SCHEMA['EMAIL ADDRESS']||['Worker ID','Email Type','Primary','Email Address'];
+  return filterEmptyColumns(H_EMAIL, rows);
+}
+
+function transformPhone(hdrs, data) {
+  const pid=colIdx(hdrs,'EMPLID','PERSON_ID_EXTERNAL','Worker ID');
+  const typ=colIdx(hdrs,'PHONE_TYPE','Phone Number Type');
+  const pri=colIdx(hdrs,'PREF_PHONE_FLAG','IS_PRIMARY','Primary');
+  const cc =colIdx(hdrs,'COUNTRY_CODE','International Phone Code');
+  const ph =colIdx(hdrs,'PHONE','PHONE_NUMBER','Phone Number');
+  const ext=colIdx(hdrs,'EXTENSION','Phone Extension');
+  const rows=data.map(r=>[
+    r01_zeroPad(pid>=0?r[pid]:''),
+    r08_clean(typ>=0?r[typ]:''),
+    r08_clean(pri>=0?r[pri]:''),
+    r11_countryCode(cc>=0?r[cc]:''),
+    r08_clean(ph>=0?r[ph]:''),
+    r08_clean(ext>=0?r[ext]:''),
+  ]);
+  // Find the phone sheet — key may vary (PERSON PHONE, WORKER PHONE, etc.)
+  const phoneKey=Object.keys(DGW_SCHEMA).find(k=>k.toUpperCase().includes('PHONE'))||'PERSON PHONE';
+  const H_PHONE=DGW_SCHEMA[phoneKey]||['Worker ID','Phone Number Type','Primary','International Phone Code','Phone Number','Phone Extension'];
+  return filterEmptyColumns(H_PHONE, rows);
+}
+
+function transformNID(hdrs, data) {
+  const pid=colIdx(hdrs,'EMPLID','PERSON_ID_EXTERNAL','Worker ID');
+  const nid=colIdx(hdrs,'NATIONAL_ID','National ID');
+  const typ=colIdx(hdrs,'NATIONAL_ID_TYPE','CARD_TYPE','National ID Type');
+  const rows=data.map(r=>[
+    r01_zeroPad(pid>=0?r[pid]:''),
+    r08_clean(nid>=0?r[nid]:''),
+    r08_clean(typ>=0?r[typ]:''),
+  ]);
+  const nidKey=Object.keys(DGW_SCHEMA).find(k=>k.toUpperCase().includes('ID')&&!k.toUpperCase().includes('EMAIL'))||'PERSON ID';
+  const H_NID=DGW_SCHEMA[nidKey]||['Worker ID','National ID','National ID Type'];
+  return filterEmptyColumns(H_NID, rows);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  VALIDATION
+// ═══════════════════════════════════════════════════════════════
+function runValidation() {
+  S.valResults=[];
+  const MANDATORY={
+    'NAME':[0,1,4,6],
+    'EMAIL ADDRESS':[0,1,2,3],
+    'PERSON PHONE':[0,1,2,4],
+    'PERSON ID':[0,1,2],
+  };
+  // Field checks
+  for(const [sheet,{headers,rows}] of Object.entries(S.output)){
+    const mandIdx=MANDATORY[sheet]||[];
+    headers.forEach((field,ci)=>{
+      const vals=rows.map(r=>r[ci]);
+      const empty=vals.filter(v=>v===''||v===null||v===undefined).length;
+      const isMand=mandIdx.includes(ci);
+      const status=empty>0&&isMand?'FAIL':(empty>0?'WARN':'PASS');
+      let action='';
+      if(status==='FAIL')action=`Fill ${empty} missing ${field} value(s)`;
+      else if(status==='WARN')action=`${empty} optional blank(s) — verify`;
+      S.valResults.push({Sheet:sheet,Field:field,Check:isMand?'Mandatory':'Optional',
+        Records:vals.length,Passed:vals.length-empty,Failed:empty,Status:status,Action:action});
+    });
+  }
+  // Email format
+  const em=S.output['EMAIL ADDRESS'];
+  if(em){
+    const emailIdx=3;
+    const vals=em.rows.map(r=>r[emailIdx]);
+    const bad=vals.filter(v=>v&&!EMAIL_RE.test(v)).length;
+    S.valResults.push({Sheet:'EMAIL ADDRESS',Field:'Email Address',Check:'Format (regex)',
+      Records:vals.length,Passed:vals.length-bad,Failed:bad,Status:bad>0?'FAIL':'PASS',
+      Action:bad>0?`Fix ${bad} invalid email format(s)`:''});
+  }
+  // NID type validation
+  const ni=S.output['PERSON ID'];
+  if(ni){
+    const vals=ni.rows.map(r=>r[2]);
+    const bad=vals.filter(v=>v&&!ALLOWED_NID.has(v)).length;
+    S.valResults.push({Sheet:'PERSON ID',Field:'National ID Type',Check:'Allowed values',
+      Records:vals.length,Passed:vals.length-bad,Failed:bad,
+      Status:bad>0?'WARN':'PASS',
+      Action:bad>0?`Verify non-standard ID types: ${[...new Set(vals.filter(v=>v&&!ALLOWED_NID.has(v)))].join(', ')}`:'PR type — confirm configured in Workday tenant'});
+  }
+  // Referential integrity across sheets
+  const wIdBySheet={};
+  for(const [sheet,{rows}] of Object.entries(S.output)){
+    wIdBySheet[sheet]=new Set(rows.map(r=>r[0]).filter(Boolean));
+  }
+  const sheets=Object.keys(wIdBySheet);
+  if(sheets.length>1){
+    const ref=wIdBySheet[sheets[0]];
+    const match=sheets.every(s=>wIdBySheet[s].size===ref.size);
+    S.valResults.push({Sheet:'ALL',Field:'Worker ID',Check:'Referential integrity',
+      Records:ref.size,Passed:match?ref.size:0,Failed:match?0:1,
+      Status:match?'PASS':'WARN',
+      Action:match?'':'Worker ID counts differ across sheets — check for missing records'});
+  }
+  // Duplicate Worker IDs
+  const nameSheet=S.output['NAME'];
+  if(nameSheet){
+    const ids=nameSheet.rows.map(r=>r[0]);
+    const dupes=ids.length-new Set(ids).size;
+    S.valResults.push({Sheet:'NAME',Field:'Worker ID',Check:'No duplicates',
+      Records:ids.length,Passed:ids.length-dupes,Failed:dupes,
+      Status:dupes===0?'PASS':'FAIL',
+      Action:dupes>0?`Remove ${dupes} duplicate Worker ID(s)`:''});
+  }
+  // Primary flag — exactly 1 per worker per domain
+  for(const [sheet, priIdx] of [['EMAIL ADDRESS',2],['PERSON PHONE',2]]) {
+    const sh=S.output[sheet];
+    if(!sh)continue;
+    const byWorker={};
+    sh.rows.forEach(r=>{const wid=r[0],pri=r[priIdx];if(!byWorker[wid])byWorker[wid]=0;if(pri==='Y')byWorker[wid]++;});
+    const bad=Object.values(byWorker).filter(c=>c!==1).length;
+    S.valResults.push({Sheet:sheet,Field:'Primary',Check:'Exactly 1 Y per worker',
+      Records:sh.rows.length,Passed:sh.rows.length-bad,Failed:bad,
+      Status:bad===0?'PASS':'FAIL',
+      Action:bad>0?`${bad} worker(s) with primary count ≠ 1`:''});
+  }
+}
+
+// Scan up to 10 rows to find the actual header row in a source sheet.
+// Handles cases where the user added title/metadata rows above the column headers.
+function findSrcHeaderRow(rows){
+  for(let i=0;i<Math.min(rows.length,10);i++){
+    const hdrs=rows[i].map(h=>String(h||'').trim());
+    // Accept row if it yields a detectable domain OR contains a known ID column
+    if(detectDomain(hdrs)) return i;
+    const lc=hdrs.map(h=>h.toLowerCase());
+    if(lc.some(h=>h==='emplid'||h==='person_id'||h==='person_id_external'||h==='worker id')) return i;
+  }
+  return 0; // fallback
+}
+
+// Collect column headers per-domain so matching is scoped to the right source sheet
+function collectSrcCols(){
+  S.srcCols=new Set();
+  S.srcColsByDomain={};  // domain key ('names'|'email'|'phone'|'nid') -> Set of lowercase col names
+  for(const rows of Object.values(S.srcData)){
+    if(!rows||rows.length<1)continue;
+    const hdrIdx=findSrcHeaderRow(rows);
+    const hdrs=rows[hdrIdx].map(h=>String(h||'').trim());
+    const domain=detectDomain(hdrs);
+    hdrs.forEach(h=>{ if(h) S.srcCols.add(h.toLowerCase()); });
+    if(domain){
+      if(!S.srcColsByDomain[domain]) S.srcColsByDomain[domain]=new Set();
+      hdrs.forEach(h=>{ if(h) S.srcColsByDomain[domain].add(h.toLowerCase()); });
+    }
+  }
+}
+
+// Non-worker table keywords — these belong to dependent/relative entities, not the worker
+const EXCLUDE_TABLE = /RELATIVE|DEPENDENT|BENEFICIAR|EMERGENCY|CONTACT|CHILD|SPOUSE|PARENT/i;
+
+// Map a Workday target table name to the internal domain key
+// Returns null for tables that don't belong to any detected source domain
+function wdTableToDomain(wdTable){
+  const t=String(wdTable||'').toUpperCase();
+  if(EXCLUDE_TABLE.test(t)) return null;   // not a worker-level table
+  if(t.includes('PHONE'))   return 'phone';
+  if(t.includes('EMAIL'))   return 'email';
+  if(t.includes('NATIONAL')||t.includes('PERSON ID')) return 'nid';
+  if(t.includes('NAME'))    return 'names';
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  FILE UPLOAD
+// ═══════════════════════════════════════════════════════════════
+function handleSrc(e){
+  const file=e.target.files[0]; if(!file)return;
+  showLoader(`Reading ${file.name}…`,'Detecting sheet domains');
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const wb=XLSX.read(ev.target.result,{type:'binary',cellDates:false,raw:false,dateNF:'YYYY-MM-DD'});
+      S.srcData={};
+      wb.SheetNames.forEach(n=>{
+        S.srcData[n]=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:false,dateNF:'YYYY-MM-DD'});
+      });
+      S.srcReady=true;
+      collectSrcCols();
+      mark('dz-src','fi-src',file.name,file.size);
+      setPill('src',true,file.name);
+    }catch(err){
+      document.getElementById('dz-src').classList.add('error');
+      document.getElementById('fi-src').textContent=`Error: ${err.message}`;
+    }
+    checkRunReady(); hideLoader();
+  };
+  reader.readAsBinaryString(file);
+}
+
+function handleMap(e){
+  const file=e.target.files[0]; if(!file)return;
+  showLoader(`Parsing mapping file…`,`Reading: ${file.name}`);
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const wb=XLSX.read(ev.target.result,{type:'binary',raw:false});
+      const parsed=parseKAMapping(wb);
+      if(parsed.length===0){throw new Error('No mapping rows found. Check the file has a Table/Field header row.');}
+      // Replace the live KA_MAPPING array
+      KA_MAPPING.length=0; parsed.forEach(r=>KA_MAPPING.push(r));
+      S.mapReady=true;
+      mark('dz-map','fi-map',file.name,file.size);
+      document.getElementById('fi-map').textContent=`✓ ${file.name}  |  ${parsed.length} rules parsed`;
+      setPill('map',true,file.name);
+      // Re-render KA viewer if already on that page
+      renderKASheet();
+    }catch(err){
+      document.getElementById('fi-map').textContent=`Error: ${err.message}`;
+    }
+    checkRunReady(); hideLoader();
+  };
+  reader.readAsBinaryString(file);
+}
+
+function handleDgw(e){
+  const file=e.target.files[0]; if(!file)return;
+  showLoader(`Parsing DGW template…`,`Reading: ${file.name}`);
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    try{
+      const wb=XLSX.read(ev.target.result,{type:'binary',raw:false});
+      const parsed=parseKADGW(wb);
+      if(Object.keys(parsed).length===0){throw new Error('No sheets with column headers found.');}
+      // Replace DGW_SCHEMA entries
+      Object.keys(DGW_SCHEMA).forEach(k=>delete DGW_SCHEMA[k]);
+      Object.assign(DGW_SCHEMA,parsed);
+      S.dgwReady=true;
+      const sheetNames=Object.keys(parsed).join(' · ');
+      mark('dz-dgw','fi-dgw',file.name,file.size);
+      document.getElementById('fi-dgw').textContent=`✓ ${file.name}  |  Sheets: ${sheetNames}`;
+      setPill('dgw',true,file.name);
+      // Re-render KA DGW viewer
+      renderKADGW();
+    }catch(err){
+      document.getElementById('fi-dgw').textContent=`Error: ${err.message}`;
+    }
+    checkRunReady(); hideLoader();
+  };
+  reader.readAsBinaryString(file);
+}
+
+// Parse uploaded mapping Excel → KA_MAPPING rows
+// The actual Accenture mapping file has duplicate "Table"/"Field" column headers
+// (once for PS source, once for WD target). We detect them by occurrence order.
+function parseKAMapping(wb){
+  const results=[];
+  wb.SheetNames.forEach(sheetName=>{
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{header:1,raw:false,defval:''});
+    if(!rows||rows.length<2)return;
+    // Find header row: a row with 2+ cells containing 'field' or 'table'
+    let hdrIdx=-1;
+    for(let i=0;i<Math.min(rows.length,8);i++){
+      const lc=rows[i].map(c=>String(c||'').toLowerCase());
+      if(lc.filter(c=>c.includes('field')||c.includes('table')).length>=2){hdrIdx=i;break;}
+    }
+    if(hdrIdx<0)return;
+    const hdrs=rows[hdrIdx].map(c=>String(c||'').trim().toLowerCase());
+
+    // Because both PS and WD columns are labelled "Table"/"Field", find ALL occurrences
+    // and assign: 1st occurrence = PS, 2nd occurrence = WD
+    const tableOccurrences = hdrs.reduce((a,h,i)=>{if(h.includes('table'))a.push(i);return a;},[]);
+    const fieldOccurrences = hdrs.reduce((a,h,i)=>{if(h.includes('field'))a.push(i);return a;},[]);
+
+    const psTabI  = tableOccurrences[0]??-1;
+    const psFieldI= fieldOccurrences[0]??-1;
+    const wdTabI  = tableOccurrences[1]??-1;   // second "Table" column = WD Table
+    const wdFieldI= fieldOccurrences[1]??-1;   // second "Field" column = WD Field
+
+    // Required column: first cell after WD columns that mentions required/optional
+    const afterWd = Math.max(wdFieldI, wdTabI) + 1;
+    const reqI = hdrs.findIndex((h,i)=>i>=afterWd&&(h.includes('required')||h.includes('optional')));
+
+    // Comments: look for a cell after required that mentions comment/note
+    const afterReq = reqI>=0 ? reqI+1 : afterWd;
+    const noteI= hdrs.findIndex((h,i)=>i>=afterReq&&(h.includes('comment')||h.includes('note')||h.includes('remark')));
+
+    for(let r=hdrIdx+1;r<rows.length;r++){
+      const row=rows[r];
+      const psField=psFieldI>=0?String(row[psFieldI]||'').trim():'';
+      const wdField=wdFieldI>=0?String(row[wdFieldI]||'').trim():'';
+      if(!psField&&!wdField)continue; // skip blank rows
+      const psTab =psTabI >=0?String(row[psTabI ]||'').trim():'—';
+      const wdTab =wdTabI >=0?String(row[wdTabI ]||'').trim():'';
+      const req   =reqI   >=0?String(row[reqI   ]||'').trim():'Optional';
+      const note  =noteI  >=0?String(row[noteI  ]||'').trim():'—';
+      const reqNorm=req.toLowerCase().includes('req')?'Required':'Optional';
+      // Mapping type: derive from field/note keywords; default to Direct
+      const mapNorm=(note.toLowerCase().includes('deriv')||note.toLowerCase().includes('lookup'))?'Derived':'Direct';
+      results.push([psTab,psField,wdTab||sheetName,wdField,reqNorm,mapNorm,note||'—','High']);
+    }
+  });
+  return results;
+}
+
+// Parse DGW template → { sheetName: [col1, col2, …], … }
+function parseKADGW(wb){
+  const schema={};
+  wb.SheetNames.forEach(name=>{
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:false,defval:''});
+    // Find first non-empty row — that's the header
+    for(const row of rows){
+      const cols=row.map(c=>String(c||'').trim()).filter(Boolean);
+      if(cols.length>=2){schema[name]=cols;break;}
+    }
+  });
+  return schema;
+}
+
+function mark(dz,fi,name,size){
+  document.getElementById(dz).classList.add('loaded');
+  document.getElementById(fi).textContent=`✓ ${name} (${(size/1024).toFixed(1)} KB)`;
+}
+function setPill(key,ok,name){
+  const el=document.getElementById(`pill-${key}`);
+  const lbl={src:'PeopleSoft Source Data',map:'Mapping File (Knowledge Article)',dgw:'DGW Template (Knowledge Article)'};
+  el.textContent=(ok?'✅ ':'⬜ ')+(lbl[key]||key);
+  if(ok)el.classList.add('ready');
+}
+function checkRunReady(){
+  const ready=S.srcReady&&S.mapReady&&S.dgwReady;
+  document.getElementById('btn-run').disabled=!ready;
+  if(ready){
+    document.getElementById('btn-run').title='All 3 files loaded — ready to run';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  LOAD DEMO
+// ═══════════════════════════════════════════════════════════════
+function loadDemo(){
+  if(!S.mapReady||!S.dgwReady){
+    alert('Please upload the Mapping File and DGW Template Knowledge Articles first, then load demo data.');
+    return;
+  }
+  showLoader('Loading demo dataset…','30 workers · 4 domains');
+  setTimeout(()=>{
+    S.srcData=JSON.parse(JSON.stringify(DEMO_SRC));
+    S.srcReady=true;
+    collectSrcCols();
+    document.getElementById('dz-src').classList.add('loaded');
+    document.getElementById('fi-src').textContent='✓ Demo: Input File - Sample Data.xlsx (30 workers)';
+    setPill('src',true,'Demo');
+    checkRunReady(); hideLoader();
+  },500);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  RUN AGENT
+// ═══════════════════════════════════════════════════════════════
+function runAgent(){
+  if(!S.srcReady||!S.mapReady||!S.dgwReady){alert('Upload all 3 files first.');return;}
+  showLoader('Parsing Knowledge Articles…','Reading mapping rules and DGW schema');
+  setTimeout(()=>{
+    renderMappingReview();
+    unlockNav([0,1]);
+    hideLoader(); goTo(1);
+  },600);
+}
+
+function applyMappings(){
+  showLoader('Applying transformations…','Running 11 rules across all domains');
+  setTimeout(()=>{
+    try{
+      transformAll();
+      runValidation();
+      renderPreview();
+      renderValidation();
+      renderExport();
+      unlockNav([0,1,2,3,4,5]);
+      hideLoader(); goTo(2);
+    }catch(err){hideLoader();alert('Transformation error: '+err.message+'\n\n'+err.stack);}
+  },500);
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  RENDER MAPPING REVIEW
+// ═══════════════════════════════════════════════════════════════
+function renderMappingReview(){
+  // Only show rules whose PS field exists in the source sheet for that specific domain
+  const rules = S.srcCols.size > 0
+    ? KA_MAPPING.filter(r => {
+        const field  = String(r[1]||'').trim().toLowerCase();
+        if(!field) return false;
+        const domain = wdTableToDomain(r[2]);
+        if(!domain) return false;
+        const cols   = S.srcColsByDomain[domain];
+        return cols && cols.has(field);
+      })
+    : KA_MAPPING;
+
+  const total  = KA_MAPPING.length;
+  const direct = rules.filter(r=>r[5]==='Direct').length;
+  const derived= rules.filter(r=>r[5]==='Derived').length;
+  const tgts   = [...new Set(rules.map(r=>r[2]))];
+
+  document.getElementById('map-stats').innerHTML=`
+    <div class="stat"><div class="stat-n">${rules.length}</div><div class="stat-l">Mapped from source</div></div>
+    <div class="stat"><div class="stat-n" style="color:var(--text-3);font-size:18px">${total}</div><div class="stat-l">Total in KA file</div></div>
+    <div class="stat green"><div class="stat-n">${direct}</div><div class="stat-l">Direct</div></div>
+    <div class="stat amber"><div class="stat-n">${derived}</div><div class="stat-l">Derived</div></div>`;
+
+  const skipped = total - rules.length;
+  document.getElementById('map-alerts').innerHTML =
+    `<div class="alert alert-success">✅ <strong>${rules.length}</strong> mapping rules match fields in your source file.`+
+    (skipped>0 ? ` <span style="color:var(--text-2)">${skipped} rules in the Knowledge Article were skipped — their PS fields are not present in the input.</span>` : '')+
+    `</div>`;
+
+  const tb=document.getElementById('tb-map-review'); tb.innerHTML='';
+  rules.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td style="color:var(--text-3)">${i+1}</td>
+      <td class="mono">${r[0]||'—'}</td><td class="mono">${r[1]||'—'}</td>
+      <td>${r[2]||'—'}</td><td class="mono">${r[3]||'—'}</td>
+      <td><span class="req-${(r[4]||'optional').toLowerCase()}">${r[4]||'Optional'}</span></td>
+      <td><span class="b-${(r[5]||'direct').toLowerCase()}">${r[5]||'Direct'}</span></td>
+      <td style="color:var(--text-2);max-width:240px;white-space:normal">${r[6]||'—'}</td>
+      <td class="conf-${(r[7]||'high').toLowerCase()}">${r[7]||'High'}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  RENDER PREVIEW
+// ═══════════════════════════════════════════════════════════════
+function renderPreview(){
+  const sheets=Object.keys(S.output);
+  const total=sheets.reduce((a,s)=>a+(S.output[s].rows.length),0);
+  document.getElementById('preview-stats').innerHTML=sheets.map((s,i)=>
+    `<div class="stat ${i>0?'green':''}"><div class="stat-n">${S.output[s].rows.length}</div><div class="stat-l">${s}</div></div>`
+  ).join('');
+  document.getElementById('preview-count').textContent=`${total} worker records`;
+  const tabBar=document.getElementById('preview-tabs'), panes=document.getElementById('preview-panes');
+  tabBar.innerHTML=''; panes.innerHTML='';
+  sheets.forEach((sheet,i)=>{
+    const {headers,rows}=S.output[sheet];
+    tabBar.innerHTML+=`<button class="tab-btn ${i===0?'active':''}" onclick="showPTab(${i})">${sheet}</button>`;
+    const p=document.createElement('div');
+    p.className=`tab-pane ${i===0?'active':''}`;
+    p.innerHTML=`<div class="tbl-wrap scroll-pane"><table>
+      <thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(r=>`<tr>${r.map(v=>`<td class="mono">${v||'—'}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table></div>`;
+    panes.appendChild(p);
+  });
+}
+function showPTab(i){
+  document.querySelectorAll('#preview-tabs .tab-btn').forEach((b,j)=>b.classList.toggle('active',i===j));
+  document.querySelectorAll('#preview-panes .tab-pane').forEach((p,j)=>p.classList.toggle('active',i===j));
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  RENDER VALIDATION
+// ═══════════════════════════════════════════════════════════════
+function renderValidation(){
+  const res=S.valResults;
+  const pass=res.filter(r=>r.Status==='PASS').length;
+  const fail=res.filter(r=>r.Status==='FAIL').length;
+  const warn=res.filter(r=>r.Status==='WARN').length;
+  document.getElementById('val-stats').innerHTML=`
+    <div class="stat"><div class="stat-n">${res.length}</div><div class="stat-l">Checks run</div></div>
+    <div class="stat green"><div class="stat-n">${pass}</div><div class="stat-l">Passed</div></div>
+    <div class="stat ${fail>0?'red':'green'}"><div class="stat-n">${fail}</div><div class="stat-l">Failed</div></div>
+    <div class="stat ${warn>0?'amber':'green'}"><div class="stat-n">${warn}</div><div class="stat-l">Warnings</div></div>`;
+  document.getElementById('val-alerts').innerHTML=fail>0
+    ?`<div class="alert alert-danger">❌ ${fail} check(s) failed — resolve before loading to Workday.</div>`
+    :warn>0
+      ?`<div class="alert alert-warn">⚠️ ${warn} warning(s) — review before loading.</div>`
+      :`<div class="alert alert-success">✅ All ${res.length} checks passed. Data is ready for Workday.</div>`;
+  const tb=document.getElementById('tb-val'); tb.innerHTML='';
+  res.forEach(r=>{
+    const tr=document.createElement('tr');
+    const cls=r.Status==='PASS'?'pass':r.Status==='FAIL'?'fail':'warn-b';
+    tr.innerHTML=`<td>${r.Sheet}</td><td>${r.Field}</td><td>${r.Check}</td>
+      <td>${r.Records}</td><td>${r.Passed}</td><td>${r.Failed}</td>
+      <td><span class="${cls}">${r.Status}</span></td>
+      <td style="font-size:11px;color:var(--text-2)">${r.Action||''}</td>`;
+    tb.appendChild(tr);
+  });
+  const tbT=document.getElementById('tb-trans'); tbT.innerHTML='';
+  S.transLog.forEach(t=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td><strong style="color:var(--primary)">${t.Rule}</strong></td>
+      <td>${t.Desc}</td><td class="mono">${t.Source}</td><td class="mono">${t.Target}</td>
+      <td style="color:var(--text-2)">${t.Example}</td><td>${t.Records}</td>`;
+    tbT.appendChild(tr);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  RENDER EXPORT
+// ═══════════════════════════════════════════════════════════════
+function renderExport(){
+  const sheets=Object.keys(S.output);
+  const total=sheets.reduce((a,s)=>a+(S.output[s].rows.length),0);
+  const fail=S.valResults.filter(r=>r.Status==='FAIL').length;
+  const warn=S.valResults.filter(r=>r.Status==='WARN').length;
+  document.getElementById('export-alerts').innerHTML=
+    `<div class="alert alert-success">✅ Migration complete — <strong>${total} records across ${sheets.length} sheets</strong></div>`+
+    (fail>0?`<div class="alert alert-danger">❌ ${fail} validation failure(s) — fix before loading</div>`:'')+
+    (warn>0?`<div class="alert alert-warn">⚠️ ${warn} warning(s) — review before loading</div>`:'');
+  document.getElementById('csv-btns').innerHTML=sheets.map(s=>
+    `<button class="btn btn-ghost btn-sm" onclick="downloadCSV('${s}')">📄 ${s} (CSV)</button>`).join('');
+  document.getElementById('export-checklist').innerHTML=[
+    ...sheets.map(s=>`<div class="checklist-item"><span>✅ ${s}</span><span style="color:var(--text-3)">${S.output[s].rows.length} records</span></div>`),
+    `<div class="checklist-item"><span>📖 Mapping Rules</span><span style="color:var(--text-3)">${KA_MAPPING.length} rules</span></div>`,
+    `<div class="checklist-item"><span>🔍 Validation Checks</span><span style="color:var(--text-3)">${S.valResults.length} checks</span></div>`,
+    fail===0
+      ?`<div class="checklist-item"><span>✅ All validations passed</span><span style="color:var(--accent)">Ready for Workday</span></div>`
+      :`<div class="checklist-item"><span>❌ ${fail} failure(s)</span><span style="color:var(--danger)">Fix required</span></div>`,
+  ].join('');
+  const descs={'NAME':'Load workers first — identity foundation','PERSON ID':'National ID after worker exists','EMAIL ADDRESS':'Contact data after identity','PERSON PHONE':'Phone data — load last'};
+  const order=['NAME','PERSON ID','EMAIL ADDRESS','PERSON PHONE'];
+  const ordered=[...order.filter(s=>sheets.includes(s)),...sheets.filter(s=>!order.includes(s))];
+  document.getElementById('load-seq').innerHTML=ordered.slice(0,4).map((s,i)=>
+    `<div class="seq-item"><div class="seq-num">${i+1}</div><div class="seq-name">${s}</div><div class="seq-desc">${descs[s]||'Load after identity data'}</div></div>`
+  ).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  RENDER KNOWLEDGE ARTICLES PAGE
+// ═══════════════════════════════════════════════════════════════
+function renderKASheet(){
+  const emptyEl=document.getElementById('ka-map-empty');
+  const sel=document.getElementById('ka-sheet-sel').value;
+  if(!S.mapReady||KA_MAPPING.length===0){
+    if(emptyEl)emptyEl.style.display='';
+    document.getElementById('tb-ka-map').innerHTML='';
+    return;
+  }
+  if(emptyEl)emptyEl.style.display='none';
+  // Rebuild domain dropdown from actual parsed data
+  const domains=[...new Set(KA_MAPPING.map(r=>r[2]).filter(Boolean))];
+  const selEl=document.getElementById('ka-sheet-sel');
+  const currentVal=selEl.value;
+  selEl.innerHTML='<option value="all">All Domains</option>'+domains.map(d=>`<option value="${d}">${d}</option>`).join('');
+  selEl.value=domains.includes(currentVal)?currentVal:'all';
+  const filterVal=selEl.value;
+  const rules=filterVal==='all'?KA_MAPPING:KA_MAPPING.filter(r=>r[2]===filterVal||r[3]===filterVal);
+  const tb=document.getElementById('tb-ka-map'); tb.innerHTML='';
+  rules.forEach((r,i)=>{
+    const tr=document.createElement('tr');
+    const reqCls=(r[4]||'').toLowerCase().includes('req')?'required':'optional';
+    const mapCls=(r[5]||'').toLowerCase().includes('deriv')?'derived':'direct';
+    const confCls=(r[7]||'high').toLowerCase();
+    tr.innerHTML=`<td style="color:var(--text-3)">${i+1}</td>
+      <td class="mono">${r[0]||'—'}</td><td class="mono">${r[1]||'—'}</td>
+      <td>${r[2]||'—'}</td><td class="mono">${r[3]||'—'}</td>
+      <td><span class="req-${reqCls}">${r[4]||'Optional'}</span></td>
+      <td><span class="b-${mapCls}">${r[5]||'Direct'}</span></td>
+      <td style="color:var(--text-2);max-width:240px;white-space:normal">${r[6]||'—'}</td>
+      <td class="conf-${confCls}">${r[7]||'High'}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function renderKADGW(){
+  const tabBar=document.getElementById('ka-dgw-tabs'), panes=document.getElementById('ka-dgw-panes');
+  const emptyEl=document.getElementById('ka-dgw-empty');
+  tabBar.innerHTML=''; panes.innerHTML='';
+  if(!S.dgwReady||Object.keys(DGW_SCHEMA).length===0){
+    if(emptyEl)emptyEl.style.display='';
+    return;
+  }
+  if(emptyEl)emptyEl.style.display='none';
+  Object.entries(DGW_SCHEMA).forEach(([sheet,cols],i)=>{
+    tabBar.innerHTML+=`<button class="tab-btn ${i===0?'active':''}" onclick="showDGWTab(${i})">${sheet}</button>`;
+    const p=document.createElement('div');
+    p.className=`tab-pane ${i===0?'active':''}`;
+    const rows=cols.map((c,j)=>`<tr><td style="color:var(--text-3)">${j+1}</td><td class="mono">${c}</td><td>${j===0?'<span class="req-required">Required</span>':'<span class="req-optional">Optional</span>'}</td><td style="color:var(--text-2)">${colNote(sheet,c)}</td></tr>`).join('');
+    p.innerHTML=`<div class="tbl-wrap"><table>
+      <thead><tr><th>#</th><th>Column Name</th><th>Required</th><th>Notes</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+    panes.appendChild(p);
+  });
+}
+
+function colNote(sheet,col){
+  const notes={
+    'Worker ID':'Zero-padded 6-digit employee ID  e.g. 010021',
+    'Prehire Effective Date':'ISO-8601 YYYY-MM-DD',
+    'Prefix':'Valid: Mr. Ms. Mrs. Dr.',
+    'Name Effective Date':'Must match Prehire Effective Date',
+    'First Name':'Title-case  e.g. John',
+    'Middle Name':'Title-case; blank if null',
+    'Last Name':'Title-case  e.g. Doe',
+    'Suffix':'Jr. Sr. II III IV; blank if null',
+    'Email Type':'Valid: BUSN HOME OTHER',
+    'Primary':'Y/N; exactly 1 Y per worker',
+    'Email Address':'Lowercase  e.g. john.doe@company.com',
+    'Phone Number Type':'Valid: BUSN HOME MOBILE',
+    'International Phone Code':'Integer string; no + prefix  e.g. 1 or 44',
+    'Phone Number':'Pass-through  e.g. 502-5324',
+    'Phone Extension':'Integer; blank if null',
+    'National ID':'Do not hash  e.g. 412998000',
+    'National ID Type':'PR SSN NIN SIN TFN — confirm with client',
+  };
+  return notes[col]||'—';
+}
+
+function showDGWTab(i){
+  document.querySelectorAll('#ka-dgw-tabs .tab-btn').forEach((b,j)=>b.classList.toggle('active',i===j));
+  document.querySelectorAll('#ka-dgw-panes .tab-pane').forEach((p,j)=>p.classList.toggle('active',i===j));
+}
+
+function renderRules(){
+  const tb=document.getElementById('tb-rules'); tb.innerHTML='';
+  RULES.forEach(r=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td><strong style="color:var(--primary);font-family:monospace">${r[0]}</strong></td>
+      <td>${r[1]}</td><td style="color:var(--text-2)">${r[2]}</td>
+      <td class="mono" style="color:var(--text-2)">${r[3]}</td>
+      <td class="mono" style="color:var(--accent)">${r[4]}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  DOWNLOADS
+// ═══════════════════════════════════════════════════════════════
+function downloadDGW(){
+  if(!Object.keys(S.output).length){alert('Run the agent first.');return;}
+  const wb=XLSX.utils.book_new();
+  for(const [sheet,{headers,rows}] of Object.entries(S.output)){
+    const ws=XLSX.utils.aoa_to_sheet([headers,...rows]);
+    ws['!cols']=headers.map(h=>({wch:Math.max(h.length+4,18)}));
+    XLSX.utils.book_append_sheet(wb,ws,sheet.substring(0,31));
+  }
+  XLSX.writeFile(wb,'Workday_DGW_Populated.xlsx');
+}
+
+function downloadMappingReport(){
+  const wb=XLSX.utils.book_new();
+  // Only include mapping rules whose PS field exists in the uploaded source file
+  const filteredMapping = S.srcCols.size > 0
+    ? KA_MAPPING.filter(r => {
+        const field  = String(r[1]||'').trim().toLowerCase();
+        if(!field) return false;
+        const domain = wdTableToDomain(r[2]);
+        if(!domain) return false;
+        const cols   = S.srcColsByDomain[domain];
+        return cols && cols.has(field);
+      })
+    : KA_MAPPING;
+  // Mapping spec
+  const mH=['PS Table','PS Field','Workday Table','Workday Field','Required','Mapping Type','Transformation','Confidence'];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([mH,...filteredMapping]),'Mapping Specification');
+  // Transformation rules
+  const rH=['Rule','Description','Applies To','Source Example','Workday Output'];
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([rH,...RULES]),'Transformation Rules');
+  // Validation report
+  if(S.valResults.length){
+    const vH=['Target Sheet','Field','Check','Records','Passed','Failed','Status','Action'];
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([vH,...S.valResults.map(r=>vH.map(h=>r[h]||''))]),'Validation Report');
+  }
+  XLSX.writeFile(wb,'Workday_Mapping_Report.xlsx');
+}
+
+function downloadCSV(sheet){
+  if(!S.output[sheet])return;
+  const {headers,rows}=S.output[sheet];
+  const csv=[headers,...rows].map(r=>r.map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,﻿'+encodeURIComponent(csv);
+  a.download=sheet.replace(/ /g,'_')+'.csv'; a.click();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════════════════════
+function goTo(n){
+  const el=document.getElementById(`nav-${n}`);
+  if(el&&el.classList.contains('locked'))return;
+  document.querySelectorAll('.page').forEach((p,i)=>p.classList.toggle('active',i===n));
+  document.querySelectorAll('.nav-step').forEach((s,i)=>s.classList.toggle('active',i===n));
+  document.getElementById('hdr-step').textContent=`Step ${n+1} of ${n===5?'KA':'5'}`;
+}
+function unlockNav(steps){
+  steps.forEach(n=>{
+    const el=document.getElementById(`nav-${n}`);
+    if(el){el.classList.remove('locked');if(n>0&&n<5)el.classList.add('done');}
+  });
+}
+function showLoader(msg,sub){
+  document.getElementById('loader-msg').textContent=msg||'Processing…';
+  document.getElementById('loader-sub').textContent=sub||'';
+  document.getElementById('loader').classList.add('show');
+}
+function hideLoader(){document.getElementById('loader').classList.remove('show');}
+
+// ═══════════════════════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════════════════════
+(function init(){
+  // Show empty-state banners — files not yet uploaded
+  const mapEmpty=document.getElementById('ka-map-empty');
+  const dgwEmpty=document.getElementById('ka-dgw-empty');
+  if(mapEmpty)mapEmpty.style.display='';
+  if(dgwEmpty)dgwEmpty.style.display='';
+  renderRules();
+  // Pre-unlock KA page so user can see what files to upload
+  const ka=document.getElementById('nav-5');
+  if(ka)ka.classList.remove('locked');
+})();
+</script>
+</body>
+</html>
