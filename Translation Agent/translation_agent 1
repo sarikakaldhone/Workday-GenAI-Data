@@ -1,0 +1,697 @@
+"""
+Translation Agent — single-file, self-contained.
+Run from anywhere with:   python translation_agent.py
+Supports: Google Translate · LibreTranslate (self-hosted) · Argos Translate (offline)
+"""
+
+# ── Step 1: install core packages ─────────────────────────────────────────────
+import subprocess, sys, importlib.util
+
+CORE_PACKAGES = {
+    "streamlit":       "streamlit>=1.35.0",
+    "openpyxl":        "openpyxl>=3.1.2",
+    "deep_translator": "deep-translator>=1.11.4",
+    "pandas":          "pandas>=2.0.0",
+}
+
+missing = [pkg for mod, pkg in CORE_PACKAGES.items() if not importlib.util.find_spec(mod)]
+if missing:
+    print(f"Installing: {', '.join(missing)} ...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", *missing, "--quiet"])
+    print("Done.\n")
+
+# ── Step 2: detect Streamlit context and re-launch if needed ──────────────────
+def _in_streamlit():
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        return get_script_run_ctx() is not None
+    except Exception:
+        return False
+
+if not _in_streamlit():
+    import os
+    subprocess.run([sys.executable, "-m", "streamlit", "run",
+                    os.path.abspath(__file__), "--server.headless", "false"])
+    sys.exit()
+
+# ── Step 3: imports ────────────────────────────────────────────────────────────
+import io, re, time, requests as _requests
+from collections import defaultdict
+from copy import copy
+
+import streamlit as st
+import openpyxl
+from deep_translator import GoogleTranslator
+
+# ── Page config ────────────────────────────────────────────────────────────────
+st.set_page_config(page_title="Translation Agent", page_icon="🌐", layout="centered")
+
+st.markdown("""
+<style>
+    .hero {
+        background: linear-gradient(135deg, #1a1a2e, #0f3460);
+        color: white; padding: 2.5rem 2rem;
+        border-radius: 14px; text-align: center; margin-bottom: 1.5rem;
+    }
+    .hero h1 { font-size: 2rem; margin: 0 0 0.4rem; }
+    .hero p  { opacity: 0.75; margin: 0; font-size: 0.95rem; }
+
+    .engine-card {
+        border: 2px solid transparent; border-radius: 10px;
+        padding: 0.75rem 1rem; margin-bottom: 0.5rem;
+        cursor: pointer; transition: border-color .2s;
+    }
+    .engine-google   { background:#f0f9ff; border-color:#bae6fd; }
+    .engine-libre    { background:#f0fdf4; border-color:#86efac; }
+    .engine-argos    { background:#f5f3ff; border-color:#c4b5fd; }
+
+    .eta-box  { background:#fff8e1; border:1px solid #ffe082; border-radius:8px; padding:.6rem 1rem; margin-bottom:.8rem; font-size:.92rem; }
+    .done-box { background:#e8f5e9; border:1px solid #a5d6a7; border-radius:8px; padding:.7rem 1.1rem; margin-bottom:.8rem; font-size:.95rem; }
+    .warn-box { background:#fff3e0; border:1px solid #ffb74d; border-radius:8px; padding:.7rem 1rem; margin-bottom:.8rem; font-size:.92rem; }
+    .info-box { background:#e3f2fd; border:1px solid #90caf9; border-radius:8px; padding:.7rem 1rem; margin-bottom:.8rem; font-size:.92rem; }
+
+    .metric-box { background:white; border:1px solid #e0e4ff; border-radius:10px; padding:1rem; text-align:center; }
+    .metric-box .val { font-size:1.6rem; font-weight:700; color:#4361ee; }
+    .metric-box .lbl { font-size:.78rem; color:#666; margin-top:2px; }
+
+    .progress-track { background:#e0e0e0; border-radius:12px; height:24px; width:100%; margin:.6rem 0; overflow:hidden; border:1px solid #ccc; }
+    .progress-fill  { height:100%; background:linear-gradient(90deg,#00c853,#69f0ae); border-radius:12px;
+                      display:flex; align-items:center; justify-content:flex-end;
+                      padding-right:8px; font-size:.78rem; font-weight:700; color:#fff; min-width:2rem; }
+
+    div[data-testid="stFileUploader"] { border:2px dashed #4361ee; border-radius:12px; padding:1rem; background:#f8f9ff; }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown("""
+<div class="hero">
+    <h1>🌐 Translation Agent</h1>
+    <p>Upload your Excel file &nbsp;·&nbsp; Choose your engine &nbsp;·&nbsp; Download the translation</p>
+</div>
+""", unsafe_allow_html=True)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Constants
+# ══════════════════════════════════════════════════════════════════════════════
+
+LOCALE_MAP = {
+    "fr": "fr", "fr-ca": "fr", "fr-fr": "fr", "fr_ca": "fr", "fr_fr": "fr",
+    "de": "de", "de-de": "de", "de_de": "de", "de-at": "de", "de-ch": "de",
+    "es": "es", "es-es": "es", "es_es": "es", "es-mx": "es", "es-419": "es",
+    "pt": "pt", "pt-br": "pt", "pt_br": "pt", "pt-pt": "pt",
+    "it": "it", "it-it": "it", "it_it": "it",
+    "nl": "nl", "nl-nl": "nl", "nl_nl": "nl",
+    "pl": "pl", "pl-pl": "pl", "pl_pl": "pl",
+    "ru": "ru", "ru-ru": "ru", "ru_ru": "ru",
+    "ja": "ja", "ja-jp": "ja", "ja_jp": "ja",
+    "zh": "zh-CN", "zh-cn": "zh-CN", "zh_cn": "zh-CN", "zh-hans": "zh-CN",
+    "zh-tw": "zh-TW", "zh_tw": "zh-TW", "zh-hant": "zh-TW",
+    "ko": "ko", "ko-kr": "ko", "ko_kr": "ko",
+    "ar": "ar", "ar-sa": "ar", "ar_sa": "ar",
+    "hi": "hi", "hi-in": "hi", "hi_in": "hi",
+    "tr": "tr", "tr-tr": "tr", "tr_tr": "tr",
+    "sv": "sv", "sv-se": "sv", "sv_se": "sv",
+    "da": "da", "da-dk": "da", "da_dk": "da",
+    "no": "no", "nb": "no", "nb-no": "no", "nb_no": "no",
+    "fi": "fi", "fi-fi": "fi", "fi_fi": "fi",
+    "cs": "cs", "cs-cz": "cs", "cs_cz": "cs",
+    "hu": "hu", "hu-hu": "hu", "hu_hu": "hu",
+    "ro": "ro", "ro-ro": "ro", "ro_ro": "ro",
+    "el": "el", "el-gr": "el", "el_gr": "el",
+    "he": "he", "iw": "he", "he-il": "he",
+    "th": "th", "th-th": "th", "th_th": "th",
+    "vi": "vi", "vi-vn": "vi", "vi_vn": "vi",
+    "id": "id", "id-id": "id", "id_id": "id",
+    "ms": "ms", "ms-my": "ms", "ms_my": "ms",
+    "uk": "uk", "uk-ua": "uk", "uk_ua": "uk",
+    "en": "en", "en-us": "en", "en-gb": "en", "en_us": "en", "en_gb": "en",
+}
+
+# Languages supported by LibreTranslate / Argos (base codes only)
+LIBRE_LANGS = {"ar","az","zh","cs","da","nl","en","fi","fr","de",
+               "el","he","hi","hu","id","ga","it","ja","ko","fa",
+               "pl","pt","ru","sk","es","sv","tl","tr","uk","vi"}
+
+_PRESERVE_RE = re.compile(r"\{[^}]*\}|%[sdif]|<[^>]+>|&[a-z]+;|&#\d+;")
+
+HEADER_ALIASES = {
+    "user_language":         ["user language","userlanguage","language","locale","lang"],
+    "base_value":            ["base value","basevalue","source value","source","english value","base"],
+    "rich_base_value":       ["rich base value","richbasevalue","rich base","rich source","rich value base"],
+    "translated_value":      ["translated value","translatedvalue","translation","translated","target value"],
+    "translated_rich_value": ["translated rich value","translatedrichvalue","rich translated",
+                              "rich translation","translated rich","rich target"],
+    "status":                ["status","translation status","translationstatus","state"],
+}
+
+_SEP      = "\n⦙⦙SEP⦙⦙\n"
+MAX_CHARS = 4000
+
+ENGINES = {
+    "Google Translate":  "google",
+    "LibreTranslate (self-hosted, private)": "libre",
+    "Argos Translate (offline, private)":    "argos",
+}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Helpers
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _norm(t):
+    return re.sub(r"[^a-z0-9]", " ", str(t).lower()).strip()
+
+def _protect(text):
+    tokens = {}
+    def sub(m):
+        k = f"__P{len(tokens)}__"
+        tokens[k] = m.group(0)
+        return k
+    return _PRESERVE_RE.sub(sub, text), tokens
+
+def _restore(text, tokens):
+    for k, v in tokens.items():
+        text = text.replace(k, v)
+    return text
+
+def fmt_time(s):
+    s = max(int(s), 0)
+    return f"{s//60}m {s%60}s" if s >= 60 else f"{s}s"
+
+def render_progress(ph, pct):
+    pct = min(max(pct, 0.0), 1.0)
+    p = int(pct * 100)
+    w = max(p, 4)
+    label = f"{p}%" if p > 8 else ""
+    ph.markdown(
+        f'<div class="progress-track"><div class="progress-fill" style="width:{w}%">{label}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+def find_header_row(ws, max_scan=20):
+    best_row, best_map, best_score = None, {}, 0
+    for ri in range(1, min(max_scan + 1, ws.max_row + 1)):
+        vals = [ws.cell(row=ri, column=c).value for c in range(1, ws.max_column + 1)]
+        col_map, score = {}, 0
+        for ci, v in enumerate(vals, 1):
+            if v is None:
+                continue
+            n = _norm(v)
+            for key, aliases in HEADER_ALIASES.items():
+                if key not in col_map and any(a in n or n in a for a in aliases):
+                    col_map[key] = ci; score += 1; break
+        if score > best_score:
+            best_score, best_row, best_map = score, ri, col_map
+    return (best_row, best_map) if best_score >= 2 else (None, {})
+
+def copy_style(src, dst):
+    try:
+        if src.has_style:
+            dst.font = copy(src.font); dst.fill = copy(src.fill)
+            dst.border = copy(src.border); dst.alignment = copy(src.alignment)
+    except Exception:
+        pass
+
+def _base_lang(locale: str) -> str:
+    """Return base language code from a BCP-47 locale string."""
+    gl = LOCALE_MAP.get(locale.lower().strip(), "")
+    # strip region suffix for Argos/Libre (e.g. zh-CN → zh)
+    return gl.split("-")[0].lower() if gl else ""
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Translation engines
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Google Translate ───────────────────────────────────────────────────────────
+
+def _google_translate_chunks(unique_texts: list, google_lang: str) -> dict:
+    cache = {}
+    protected_items = []
+    for text in unique_texts:
+        if not text or not str(text).strip():
+            cache[text] = text; continue
+        p, tokens = _protect(str(text))
+        protected_items.append((text, p, tokens))
+
+    chunks, cur, cur_len = [], [], 0
+    for item in protected_items:
+        il = len(item[1]) + len(_SEP)
+        if cur and cur_len + il > MAX_CHARS:
+            chunks.append(cur); cur, cur_len = [item], il
+        else:
+            cur.append(item); cur_len += il
+    if cur:
+        chunks.append(cur)
+
+    for chunk in chunks:
+        combined = _SEP.join(p for _, p, _ in chunk)
+        try:
+            translated = GoogleTranslator(source="auto", target=google_lang).translate(combined)
+            parts = translated.split(_SEP)
+            if len(parts) == len(chunk):
+                for (orig, _, tokens), trans in zip(chunk, parts):
+                    cache[orig] = _restore(trans.strip(), tokens)
+            else:
+                for orig, prot, tokens in chunk:
+                    try:
+                        t = GoogleTranslator(source="auto", target=google_lang).translate(prot)
+                        cache[orig] = _restore(t or orig, tokens)
+                    except Exception:
+                        cache[orig] = orig
+        except Exception:
+            for orig, _, _ in chunk:
+                cache[orig] = orig
+    return cache
+
+
+# ── LibreTranslate ─────────────────────────────────────────────────────────────
+
+def _libre_translate_chunks(unique_texts: list, target_lang: str, libre_url: str) -> dict:
+    """Translate via a local LibreTranslate server. One POST per text (no separator trick needed — API is local)."""
+    cache = {}
+    for text in unique_texts:
+        if not text or not str(text).strip():
+            cache[text] = text; continue
+        prot, tokens = _protect(str(text))
+        try:
+            resp = _requests.post(
+                f"{libre_url.rstrip('/')}/translate",
+                json={"q": prot, "source": "en", "target": target_lang, "format": "text"},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            translated = resp.json().get("translatedText", prot)
+            cache[text] = _restore(translated, tokens)
+        except Exception:
+            cache[text] = text
+    return cache
+
+
+def _check_libre(url: str) -> tuple[bool, str]:
+    """Returns (is_running, languages_list_or_error)."""
+    try:
+        r = _requests.get(f"{url.rstrip('/')}/languages", timeout=5)
+        r.raise_for_status()
+        langs = [l["code"] for l in r.json()]
+        return True, langs
+    except Exception as e:
+        return False, str(e)
+
+
+# ── Argos Translate ────────────────────────────────────────────────────────────
+
+@st.cache_resource(show_spinner=False)
+def _load_argos():
+    """Install argostranslate if needed and return the module."""
+    if not importlib.util.find_spec("argostranslate"):
+        subprocess.check_call([sys.executable, "-m", "pip", "install",
+                               "argostranslate", "--quiet"])
+    import argostranslate.package
+    import argostranslate.translate
+    return argostranslate
+
+
+def _ensure_argos_package(from_code: str, to_code: str, argos) -> bool:
+    """Download Argos language package if not already installed. Returns success."""
+    try:
+        argos.package.update_package_index()
+        available = argos.package.get_available_packages()
+        pkg = next(
+            (p for p in available if p.from_code == from_code and p.to_code == to_code),
+            None,
+        )
+        if pkg:
+            installed = argos.package.get_installed_packages()
+            already = any(p.from_code == from_code and p.to_code == to_code for p in installed)
+            if not already:
+                argos.package.install_from_path(pkg.download())
+        return True
+    except Exception:
+        return False
+
+
+def _argos_translate_texts(unique_texts: list, target_lang: str) -> dict:
+    cache = {}
+    argos = _load_argos()
+    _ensure_argos_package("en", target_lang, argos)
+    for text in unique_texts:
+        if not text or not str(text).strip():
+            cache[text] = text; continue
+        prot, tokens = _protect(str(text))
+        try:
+            result = argos.translate.translate(prot, "en", target_lang)
+            cache[text] = _restore(result, tokens)
+        except Exception:
+            cache[text] = text
+    return cache
+
+
+# ── Unified dispatcher ─────────────────────────────────────────────────────────
+
+def translate_unique_texts(unique_texts: list, locale: str, engine: str,
+                            libre_url: str = "http://localhost:5000") -> dict:
+    if not unique_texts:
+        return {}
+
+    base = _base_lang(locale)
+    google_lang = LOCALE_MAP.get(locale.lower().strip(), "")
+
+    if engine == "google":
+        if not google_lang or google_lang == "en":
+            return {t: t for t in unique_texts}
+        return _google_translate_chunks(unique_texts, google_lang)
+
+    elif engine == "libre":
+        if not base or base == "en" or base not in LIBRE_LANGS:
+            return {t: t for t in unique_texts}
+        return _libre_translate_chunks(unique_texts, base, libre_url)
+
+    elif engine == "argos":
+        if not base or base == "en" or base not in LIBRE_LANGS:
+            return {t: t for t in unique_texts}
+        return _argos_translate_texts(unique_texts, base)
+
+    return {t: t for t in unique_texts}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# File scan
+# ══════════════════════════════════════════════════════════════════════════════
+
+def scan_file(file_bytes: bytes) -> dict:
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+        row_count, langs, lang_texts = 0, set(), defaultdict(set)
+
+        for sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            header_row, col_map = find_header_row(ws)
+            if header_row is None or "base_value" not in col_map:
+                continue
+            last_lang = ""
+            for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
+                lv = row[col_map["user_language"] - 1] if col_map["user_language"] - 1 < len(row) else None
+                lang = str(lv).strip() if lv else ""
+                if lang: last_lang = lang
+                else:    lang = last_lang
+                bv = row[col_map["base_value"] - 1] if col_map["base_value"] - 1 < len(row) else None
+                rv_col = col_map.get("rich_base_value", 0)
+                rv = row[rv_col - 1] if rv_col and rv_col - 1 < len(row) else None
+                if not lang and not bv:
+                    continue
+                row_count += 1
+                gl = LOCALE_MAP.get(lang.lower().strip(), "")
+                if gl and gl != "en":
+                    langs.add(lang)
+                    if bv and str(bv).strip(): lang_texts[gl].add(str(bv).strip())
+                    if rv and str(rv).strip(): lang_texts[gl].add(str(rv).strip())
+
+        wb.close()
+        total_req = sum(max(1, -(-sum(len(t) + len(_SEP) for t in texts) // MAX_CHARS))
+                        for texts in lang_texts.values())
+        return {
+            "row_count": row_count,
+            "lang_count": len(langs),
+            "unique_text_count": sum(len(v) for v in lang_texts.values()),
+            "request_count": total_req,
+            "eta_seconds": max(total_req * 2 + 1, 2),
+        }
+    except Exception:
+        return {"row_count": 0, "lang_count": 0, "unique_text_count": 0,
+                "request_count": 1, "eta_seconds": 5}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Core workbook processor
+# ══════════════════════════════════════════════════════════════════════════════
+
+def translate_workbook(file_bytes, progress_ph, status_text, timer_text,
+                       scan_info, engine, libre_url):
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes))
+    t_start       = time.time()
+    total_req     = max(scan_info["request_count"], 1)
+    done_req      = [0]
+    total_done    = 0
+    sheet_stats   = []
+
+    def _tick(extra=""):
+        elapsed   = time.time() - t_start
+        pct       = done_req[0] / total_req
+        remaining = (elapsed / pct - elapsed) if pct > 0 else scan_info["eta_seconds"]
+        timer_text.markdown(
+            f"⏱ **Elapsed:** {fmt_time(elapsed)} &nbsp;&nbsp; ⏳ **Remaining:** ~{fmt_time(remaining)}"
+            + (f" &nbsp;&nbsp; {extra}" if extra else "")
+        )
+
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        header_row, col_map = find_header_row(ws)
+        if header_row is None or "base_value" not in col_map:
+            continue
+        if any(k not in col_map for k in ["user_language", "translated_value"]):
+            continue
+
+        last_lang = ""
+        rows = []
+        for ri in range(header_row + 1, ws.max_row + 1):
+            lc   = ws.cell(row=ri, column=col_map["user_language"])
+            lang = str(lc.value).strip() if lc.value else ""
+            if lang: last_lang = lang
+            else:    lang = last_lang
+            base = ws.cell(row=ri, column=col_map["base_value"]).value
+            rich = ws.cell(row=ri, column=col_map["rich_base_value"]).value \
+                   if "rich_base_value" in col_map else None
+            if not lang and not base:
+                continue
+            rows.append({"row_idx": ri, "lang": lang,
+                         "base": str(base) if base else "",
+                         "rich": str(rich) if rich else ""})
+
+        if not rows:
+            continue
+
+        lang_groups = defaultdict(list)
+        for r in rows:
+            lang_groups[r["lang"]].append(r)
+
+        for lang, group in lang_groups.items():
+            unique_texts = list({t for r in group
+                                  for t in (r["base"], r["rich"]) if t and t.strip()})
+            chars    = sum(len(t) + len(_SEP) for t in unique_texts)
+            n_chunks = max(1, -(-chars // MAX_CHARS))
+
+            status_text.markdown(
+                f"🔄 **{sheet_name}** — `{lang}` "
+                f"| {len(group)} rows | {len(unique_texts)} unique strings"
+            )
+            _tick()
+
+            cache = translate_unique_texts(unique_texts, lang, engine, libre_url)
+
+            done_req[0] += n_chunks
+            render_progress(progress_ph, done_req[0] / total_req)
+            _tick(f"✅ `{lang}` done")
+
+            for r in group:
+                r["tv"]  = cache.get(r["base"], r["base"])
+                r["trv"] = cache.get(r["rich"], r["rich"])
+
+        count = 0
+        for r in rows:
+            ri  = r["row_idx"]
+            src = ws.cell(row=ri, column=col_map["base_value"])
+
+            tc = ws.cell(row=ri, column=col_map["translated_value"])
+            copy_style(src, tc); tc.value = r.get("tv", r["base"])
+
+            if "translated_rich_value" in col_map:
+                rc = ws.cell(row=ri, column=col_map["translated_rich_value"])
+                copy_style(src, rc); rc.value = r.get("trv", r["rich"])
+
+            if "status" in col_map:
+                ws.cell(row=ri, column=col_map["status"]).value = "Done"
+            count += 1
+
+        total_done  += count
+        sheet_stats.append((sheet_name, count))
+
+    out = io.BytesIO()
+    wb.save(out)
+    return out.getvalue(), total_done, sheet_stats, time.time() - t_start
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# UI
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Engine selector ────────────────────────────────────────────────────────────
+st.markdown("#### Select translation engine")
+engine_label = st.radio(
+    "Engine",
+    list(ENGINES.keys()),
+    label_visibility="collapsed",
+    horizontal=False,
+)
+engine = ENGINES[engine_label]
+
+# Engine-specific info / setup panel
+libre_url = "http://localhost:5000"
+
+if engine == "google":
+    st.markdown(
+        '<div class="info-box">🌐 <b>Google Translate</b> — fast, 130+ languages. '
+        'Text is sent to Google over HTTPS. Suitable for non-sensitive data.</div>',
+        unsafe_allow_html=True,
+    )
+
+elif engine == "libre":
+    st.markdown(
+        '<div class="info-box">🔒 <b>LibreTranslate</b> — fully private. '
+        'Your data never leaves your network. Requires a local LibreTranslate server.</div>',
+        unsafe_allow_html=True,
+    )
+    libre_url = st.text_input("LibreTranslate server URL", value="http://localhost:5000")
+
+    running, result = _check_libre(libre_url)
+    if running:
+        st.success(f"✅ LibreTranslate is running — {len(result)} language(s) available")
+    else:
+        st.warning(
+            "⚠️ LibreTranslate server not found. Start it with:\n\n"
+            "```\npip install libretranslate\nlibretranslate --host 0.0.0.0 --port 5000\n```"
+        )
+
+elif engine == "argos":
+    st.markdown(
+        '<div class="info-box">🔒 <b>Argos Translate</b> — fully offline. '
+        'No internet needed after first-time model download (~100 MB per language pair).</div>',
+        unsafe_allow_html=True,
+    )
+    if not importlib.util.find_spec("argostranslate"):
+        st.info("Argos Translate will be installed automatically when you click Translate.")
+    else:
+        st.success("✅ Argos Translate is installed")
+
+st.markdown("---")
+
+# ── File upload ────────────────────────────────────────────────────────────────
+st.markdown("#### Upload Excel file")
+uploaded = st.file_uploader("Upload Excel file (.xlsx)", type=["xlsx"],
+                             label_visibility="collapsed")
+
+if not uploaded:
+    st.markdown(
+        "<p style='text-align:center;color:#888;margin-top:0.5rem'>"
+        "Supported: .xlsx with User Language, Base Value, and Translated Value columns</p>",
+        unsafe_allow_html=True,
+    )
+else:
+    file_bytes_peek = uploaded.read()
+    uploaded.seek(0)
+    info = scan_file(file_bytes_peek)
+
+    st.success(
+        f"**{uploaded.name}** &nbsp;·&nbsp; {uploaded.size / 1024:.1f} KB"
+        f" &nbsp;·&nbsp; {info['row_count']} rows"
+        f" &nbsp;·&nbsp; {info['lang_count']} language(s)"
+        f" &nbsp;·&nbsp; {info['unique_text_count']} unique strings"
+    )
+
+    # Warn if engine can't handle some languages
+    if engine in ("libre", "argos"):
+        wb_prev = openpyxl.load_workbook(io.BytesIO(file_bytes_peek), read_only=True, data_only=True)
+        detected_langs = set()
+        for sn in wb_prev.sheetnames:
+            ws = wb_prev[sn]
+            hr, cm = find_header_row(ws)
+            if hr and "user_language" in cm:
+                for row in ws.iter_rows(min_row=hr+1, values_only=True):
+                    lv = row[cm["user_language"] - 1] if cm["user_language"] - 1 < len(row) else None
+                    if lv:
+                        b = _base_lang(str(lv).strip())
+                        if b and b != "en":
+                            detected_langs.add(b)
+        wb_prev.close()
+        unsupported = detected_langs - LIBRE_LANGS
+        if unsupported:
+            st.markdown(
+                f'<div class="warn-box">⚠️ <b>Unsupported languages detected:</b> '
+                f'<code>{", ".join(sorted(unsupported))}</code> — '
+                f'these are not available in {engine_label.split(" ")[0]}. '
+                f'Those rows will be left untranslated.</div>',
+                unsafe_allow_html=True,
+            )
+
+    st.markdown(
+        f"""<div class="eta-box">
+        ⏳ <b>Estimated time: ~{fmt_time(info['eta_seconds'])}</b>
+        &nbsp;&nbsp;|&nbsp;&nbsp;
+        {info['request_count']} request(s)
+        &nbsp;·&nbsp; {info['unique_text_count']} unique strings
+        &nbsp;·&nbsp; Engine: <b>{engine_label.split(" ")[0]}</b>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+
+    # Block LibreTranslate if server is down
+    libre_ok = True
+    if engine == "libre":
+        running, _ = _check_libre(libre_url)
+        if not running:
+            st.error("Cannot translate — LibreTranslate server is not running. See setup instructions above.")
+            libre_ok = False
+
+    if libre_ok and st.button("🚀 Translate", type="primary", use_container_width=True):
+        file_bytes   = uploaded.read()
+        progress_ph  = st.empty()
+        timer_text   = st.empty()
+        status_text  = st.empty()
+        render_progress(progress_ph, 0)
+
+        try:
+            out_bytes, total, sheet_stats, elapsed = translate_workbook(
+                file_bytes, progress_ph, status_text, timer_text,
+                info, engine, libre_url,
+            )
+            render_progress(progress_ph, 1.0)
+            status_text.empty(); timer_text.empty()
+
+            st.markdown(
+                f"""<div class="done-box">
+                ✅ <b>Translation complete</b>
+                &nbsp;&nbsp;|&nbsp;&nbsp;
+                ⏱ Took <b>{fmt_time(elapsed)}</b>
+                &nbsp;&nbsp;|&nbsp;&nbsp;
+                📋 {total} rows &nbsp;·&nbsp; Engine: {engine_label.split(" ")[0]}
+                </div>""",
+                unsafe_allow_html=True,
+            )
+
+            items = [("⏱", fmt_time(elapsed), "Time taken"),
+                     ("📋", str(total),        "Rows translated"),
+                     ("🔧", engine_label.split()[0], "Engine")]
+            items += [("📄", str(c), name) for name, c in sheet_stats]
+
+            cols = st.columns(len(items))
+            for col, (icon, val, lbl) in zip(cols, items):
+                col.markdown(
+                    f'<div class="metric-box"><div class="val">{icon} {val}</div>'
+                    f'<div class="lbl">{lbl}</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            out_name = uploaded.name.replace(".xlsx", f"_Translated_{engine_label.split()[0]}.xlsx")
+            st.download_button(
+                label="⬇️ Download Translated File",
+                data=out_bytes,
+                file_name=out_name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+                type="primary",
+            )
+
+        except Exception as e:
+            progress_ph.empty(); status_text.empty(); timer_text.empty()
+            st.error(f"Error: {e}")
